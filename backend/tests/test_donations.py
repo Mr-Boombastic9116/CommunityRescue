@@ -38,7 +38,7 @@ def test_create_and_manage_donation(client):
         "quantity": 50.0,
         "unit": "servings",
         "prepared_at": (now - timedelta(hours=1)).isoformat(),
-        "expiry_time": (now + timedelta(hours=4)).isoformat(),
+        "expiry_time": (now + timedelta(hours=2)).isoformat(),
         "pickup_address": "Hostel Block B Gate",
     }
 

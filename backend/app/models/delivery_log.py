@@ -7,7 +7,8 @@ class DeliveryLog(Base):
     __tablename__ = "delivery_logs"
 
     log_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    request_id = Column(Integer, ForeignKey("pickup_requests.request_id", ondelete="CASCADE"), nullable=False, index=True)
+    request_id = Column(Integer, ForeignKey("pickup_requests.request_id", ondelete="CASCADE"), nullable=True, index=True)
+    batch_id = Column(Integer, ForeignKey("food_batches.batch_id", ondelete="CASCADE"), nullable=True, index=True)
     performed_by_user_id = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True, index=True)
     action = Column(String(100), nullable=False)
     notes = Column(Text, nullable=True)

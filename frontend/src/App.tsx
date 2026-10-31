@@ -5,6 +5,7 @@ import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Public Pages
 import { LandingPage } from './pages/LandingPage';
@@ -38,6 +39,7 @@ import { ProfileSettings } from './pages/shared/ProfileSettings';
 import { QuantityAllocationPage } from './pages/shared/QuantityAllocationPage';
 import { ExpiryAlertsPage } from './pages/shared/ExpiryAlertsPage';
 import { AIAssistantPage } from './pages/shared/AIAssistantPage';
+import { NotificationsPage } from './pages/shared/NotificationsPage';
 
 export const App: React.FC = () => {
   return (
@@ -46,7 +48,8 @@ export const App: React.FC = () => {
         <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
           <Navbar />
           <Layout>
-            <Routes>
+            <ErrorBoundary>
+              <Routes>
               {/* Public Routes */}
               <Route path="/" element={<LandingPage />} />
               <Route path="/about" element={<AboutPage />} />
@@ -72,6 +75,30 @@ export const App: React.FC = () => {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/notifications"
+                element={
+                  <ProtectedRoute>
+                    <NotificationsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/quantity-allocation"
+                element={
+                  <ProtectedRoute>
+                    <QuantityAllocationPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/expiry-alerts"
+                element={
+                  <ProtectedRoute>
+                    <ExpiryAlertsPage />
+                  </ProtectedRoute>
+                }
+              />
 
               {/* Donor Routes */}
               <Route
@@ -87,6 +114,14 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute allowedRoles={['donor']}>
                     <MyDonations />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/donor/create"
+                element={
+                  <ProtectedRoute allowedRoles={['donor']}>
+                    <CreateDonation />
                   </ProtectedRoute>
                 }
               />
@@ -199,6 +234,14 @@ export const App: React.FC = () => {
                 }
               />
               <Route
+                path="/volunteer/available"
+                element={
+                  <ProtectedRoute allowedRoles={['volunteer']}>
+                    <AvailableTasks />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/volunteer/assigned"
                 element={
                   <ProtectedRoute allowedRoles={['volunteer']}>
@@ -226,6 +269,7 @@ export const App: React.FC = () => {
               {/* Catch-all 404 */}
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
+          </ErrorBoundary>
           </Layout>
           <Footer />
         </div>

@@ -1,7 +1,9 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import os
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.database.session import get_db
@@ -20,12 +22,106 @@ from app.api.deps import get_current_user, require_roles
 from app.services.expiry_service import calculate_expiry_metadata, process_food_expiries
 from app.services.expiry_validation_service import ExpiryValidationService
 from app.services.allocation_service import AllocationService
+from app.schemas.ai import CalculateExpiryRequest, CalculateExpiryResponse
 from app.utils.dates import utc_now, to_naive_utc
 
 router = APIRouter(prefix="/donations", tags=["Donations"])
 
+@router.post("/upload-image")
+async def upload_donation_photo(
+    image: UploadFile = File(...),
+    current_user: User = Depends(require_roles(["donor"])),
+):
+    """
+    Upload an ordinary food donation photograph for display on marketplace cards.
+    Validates format (JPEG, PNG, WebP) and size (<= 10MB).
+    """
+    allowed_types = ["image/jpeg", "image/png", "image/webp"]
+    if image.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported image type: '{image.content_type}'. Allowed: JPEG, PNG, WebP.",
+        )
+    image_bytes = await image.read()
+    if len(image_bytes) == 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image file is empty.")
+    if len(image_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image size exceeds 10 MB limit.")
+
+    uploads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "uploads")
+    os.makedirs(uploads_dir, exist_ok=True)
+    ext = ".jpg" if "jpeg" in (image.content_type or "") else ".png" if "png" in (image.content_type or "") else ".webp"
+    filename = f"donation_{uuid.uuid4().hex[:12]}{ext}"
+    file_path = os.path.join(uploads_dir, filename)
+
+    with open(file_path, "wb") as f:
+        f.write(image_bytes)
+
+    return {"image_url": f"/uploads/{filename}"}
+
+@router.post("/calculate-expiry", response_model=CalculateExpiryResponse)
+def calculate_expiry_endpoint(
+    payload: CalculateExpiryRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Calculates approved maximum holding hours and statutory maximum expiry
+    from curated FSSAI food safety rules for the donor workflow.
+    """
+    try:
+        prep_at = to_naive_utc(datetime.fromisoformat(payload.prepared_at.replace("Z", "+00:00")))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid prepared_at format: {e}")
+
+    pkg_time = None
+    if payload.packaging_expiry:
+        try:
+            pkg_time = datetime.fromisoformat(payload.packaging_expiry.replace("Z", "+00:00"))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid packaging_expiry format: {e}")
+    
+    validation = ExpiryValidationService.validate_food_expiry(
+        db=db,
+        food_name=payload.food_name,
+        food_category=payload.food_category,
+        prepared_at=prep_at,
+        user_expiry=prep_at + timedelta(days=365),
+        storage_condition=payload.storage_condition,
+        packaging_expiry=pkg_time,
+    )
+    rule = ExpiryValidationService.find_matching_rule(
+        db=db,
+        food_category=payload.food_category,
+        storage_condition=payload.storage_condition,
+        food_name=payload.food_name,
+    )
+
+    if validation.requires_manual_verification or not rule:
+        return CalculateExpiryResponse(
+            food_category=payload.food_category,
+            storage_condition=payload.storage_condition,
+            max_holding_hours=None,
+            approved_maximum_expiry=None,
+            rule_applied=None,
+            rule_source=None,
+            rule_clause=None,
+            requires_manual_verification=True,
+            verification_reason="No verified FSSAI safety rule found for this food category and storage condition. Manual verification required.",
+        )
+
+    return CalculateExpiryResponse(
+        food_category=payload.food_category,
+        storage_condition=payload.storage_condition,
+        max_holding_hours=validation.max_permitted_hours,
+        approved_maximum_expiry=validation.max_allowed_expiry.isoformat() if validation.max_allowed_expiry else None,
+        rule_applied=validation.rule_applied,
+        rule_source=validation.source_name,
+        rule_clause=rule.rule_version if rule else None,
+        requires_manual_verification=False,
+    )
+
 def format_batch_response(batch: FoodBatch, db: Optional[Session] = None) -> FoodBatchResponse:
-    remaining_hours, is_close = calculate_expiry_metadata(batch)
+    remaining_hours, is_close, urgency_level = calculate_expiry_metadata(batch)
     
     total_qty = float(batch.quantity)
     allocated_qty = 0.0
@@ -51,6 +147,23 @@ def format_batch_response(batch: FoodBatch, db: Optional[Session] = None) -> Foo
         reason = f"Adjusted to safety threshold based on {batch.expiry_rule_applied or 'food safety guidelines'}."
     elif batch.expiry_validation_status == "manual_verification_required":
         reason = "No certified rule found for this storage condition; requires explicit verification."
+
+    max_holding_hours = None
+    approved_maximum_expiry = None
+    if db is not None and batch.prepared_at:
+        rule = ExpiryValidationService.find_matching_rule(
+            db=db,
+            food_category=batch.food_category,
+            storage_condition=batch.storage_condition or "ambient",
+            food_name=batch.food_name,
+        )
+        if rule and rule.max_holding_hours:
+            max_holding_hours = float(rule.max_holding_hours)
+            approved_maximum_expiry = to_naive_utc(batch.prepared_at) + timedelta(hours=max_holding_hours)
+            if batch.packaging_expiry_time:
+                pkg_exp = to_naive_utc(batch.packaging_expiry_time)
+                if pkg_exp < approved_maximum_expiry:
+                    approved_maximum_expiry = pkg_exp
 
     return FoodBatchResponse(
         batch_id=batch.batch_id,
@@ -84,6 +197,9 @@ def format_batch_response(batch: FoodBatch, db: Optional[Session] = None) -> Foo
         updated_at=batch.updated_at,
         remaining_hours=remaining_hours,
         is_close_to_expiry=is_close,
+        urgency_level=urgency_level,
+        max_holding_hours=max_holding_hours,
+        approved_maximum_expiry=approved_maximum_expiry,
     )
 
 @router.post("", response_model=FoodBatchResponse, status_code=status.HTTP_201_CREATED)
@@ -124,6 +240,12 @@ def create_donation(
         packaging_expiry=batch_in.packaging_expiry_time,
     )
 
+    if validation.is_exceeded:
+        raise HTTPException(
+            status_code=400,
+            detail=validation.error_message,
+        )
+
     new_batch = FoodBatch(
         donor_id=donor.donor_id,
         food_name=batch_in.food_name.strip(),
@@ -141,7 +263,7 @@ def create_donation(
         expiry_validation_status=validation.validation_status,
         expiry_rule_applied=validation.rule_applied,
         image_url=batch_in.image_url,
-        food_status="available",
+        food_status="pending_verification" if validation.requires_manual_verification else "available",
         pickup_address=batch_in.pickup_address.strip(),
         latitude=batch_in.latitude,
         longitude=batch_in.longitude,
@@ -255,6 +377,13 @@ def update_donation(
     if batch.donor_id != donor.donor_id:
         raise HTTPException(status_code=403, detail="You do not have permission to modify this donation.")
 
+    now = utc_now()
+    if to_naive_utc(batch.expiry_time) <= now or batch.food_status == "expired":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot edit donation batch that has already expired.",
+        )
+
     # Status check: only eligible donations (available or partially_reserved) can be edited
     if batch.food_status not in ["available", "partially_reserved"]:
         raise HTTPException(
@@ -296,6 +425,9 @@ def update_donation(
     if user_exp <= to_naive_utc(batch.prepared_at):
         raise HTTPException(status_code=400, detail="Expiry time must be later than preparation time.")
 
+    if user_exp <= now:
+        raise HTTPException(status_code=400, detail="Expiry time must be in the future.")
+
     validation = ExpiryValidationService.validate_food_expiry(
         db=db,
         food_name=batch.food_name,
@@ -305,6 +437,13 @@ def update_donation(
         storage_condition=batch.storage_condition,
         packaging_expiry=batch.packaging_expiry_time,
     )
+
+    if validation.is_exceeded:
+        raise HTTPException(
+            status_code=400,
+            detail=validation.error_message,
+        )
+
     batch.user_expiry_time = user_exp
     batch.effective_expiry_time = validation.effective_expiry
     batch.expiry_time = validation.effective_expiry
@@ -341,3 +480,49 @@ def cancel_donation(
     db.commit()
     db.refresh(batch)
     return format_batch_response(batch, db=db)
+
+@router.get("/{batch_id}/recommended-ngos")
+def get_recommended_ngos_for_donation(
+    batch_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Ranks verified NGOs using smart multi-factor matching engine:
+    30% Distance, 25% Category compatibility, 20% Capacity, 15% Expiry urgency, 10% Operating availability.
+    """
+    batch = db.query(FoodBatch).filter(FoodBatch.batch_id == batch_id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Food batch not found.")
+
+    if current_user.role == "donor" and current_user.donor and current_user.donor.donor_id != batch.donor_id:
+        raise HTTPException(status_code=403, detail="You do not have permission to view recommendations for this batch.")
+
+    from app.services.matching_service import SmartMatchingService
+    recommendations = SmartMatchingService.match_ngos_for_donation(db=db, batch_id=batch_id)
+    return {
+        "batch_id": batch_id,
+        "food_name": batch.food_name,
+        "recommendations": recommendations,
+    }
+
+@router.get("/{batch_id}/timeline")
+def get_batch_lifecycle_timeline(
+    batch_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns complete chronological 9-stage lifecycle events for this food donation batch.
+    """
+    batch = db.query(FoodBatch).filter(FoodBatch.batch_id == batch_id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Food batch not found.")
+
+    from app.services.timeline_service import TimelineService
+    events = TimelineService.get_batch_timeline(db=db, batch_id=batch_id, requesting_user=current_user)
+    return {
+        "batch_id": batch_id,
+        "food_name": batch.food_name,
+        "events": events,
+    }

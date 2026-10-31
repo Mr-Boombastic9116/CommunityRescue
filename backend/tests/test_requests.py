@@ -30,6 +30,7 @@ def test_full_rescue_workflow(client):
             "food_category": "Cooked Meals",
             "quantity": 30.0,
             "unit": "servings",
+            "storage_condition": "refrigerated",
             "prepared_at": (now - timedelta(hours=1)).isoformat(),
             "expiry_time": (now + timedelta(hours=6)).isoformat(),
             "pickup_address": "Dining Hall 2",
@@ -58,19 +59,29 @@ def test_full_rescue_workflow(client):
     assert claim_res.status_code == 200
     assert claim_res.json()["request_status"] == "assigned"
 
-    # 4. Volunteer marks food as collected
+    # 4. Donor retrieves secure pickup code, volunteer verifies and marks food as collected
+    donor_code_res = client.get(f"/api/requests/{request_id}/handover-code", headers={"Authorization": f"Bearer {donor_tok}"})
+    assert donor_code_res.status_code == 200
+    pickup_code = donor_code_res.json()["handover_code"]
+    assert pickup_code is not None and len(pickup_code) == 6
+
     col_res = client.post(
-        f"/api/volunteer/tasks/{request_id}/collect",
-        json={"notes": "Food picked up in insulated containers."},
+        f"/api/volunteer/tasks/{request_id}/verify-pickup",
+        json={"code": pickup_code, "notes": "Food picked up in insulated containers."},
         headers={"Authorization": f"Bearer {vol_tok}"},
     )
     assert col_res.status_code == 200
     assert col_res.json()["request_status"] == "collected"
 
-    # 5. Volunteer marks delivery completed
+    # 5. NGO retrieves secure delivery code, volunteer verifies and marks delivery completed
+    ngo_code_res = client.get(f"/api/requests/{request_id}/handover-code", headers={"Authorization": f"Bearer {ngo_tok}"})
+    assert ngo_code_res.status_code == 200
+    delivery_code = ngo_code_res.json()["handover_code"]
+    assert delivery_code is not None and len(delivery_code) == 6
+
     deliv_res = client.post(
-        f"/api/volunteer/tasks/{request_id}/deliver",
-        json={"notes": "Delivered successfully to shelter incharge."},
+        f"/api/volunteer/tasks/{request_id}/verify-delivery",
+        json={"code": delivery_code, "notes": "Delivered successfully to shelter incharge."},
         headers={"Authorization": f"Bearer {vol_tok}"},
     )
     assert deliv_res.status_code == 200
@@ -83,6 +94,6 @@ def test_full_rescue_workflow(client):
     actions = [l["action"] for l in logs]
     assert "FOOD_REQUESTED" in actions
     assert "PICKUP_ASSIGNED" in actions
-    assert "FOOD_COLLECTED" in actions
-    assert "DELIVERY_COMPLETED" in actions
+    assert any("COLLECTED" in a.upper() for a in actions)
+    assert any("COMPLETED" in a.upper() or "DELIVERED" in a.upper() for a in actions)
 

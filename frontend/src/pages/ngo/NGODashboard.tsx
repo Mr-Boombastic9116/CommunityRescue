@@ -74,40 +74,40 @@ export const NGODashboard: React.FC = () => {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-          <span className="text-xs font-bold uppercase text-slate-400 block mb-1">Total Requests</span>
-          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">
+        <div className="p-5 rounded-2xl bg-[#E5F0FF] border border-[#23395B]/15 shadow-sm">
+          <span className="text-xs font-bold uppercase text-[#23395B] block mb-1">Total Requests</span>
+          <div className="text-2xl sm:text-3xl font-extrabold text-[#23395B]">
             {stats?.total_requests || 0}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Submitted claims</p>
+          <p className="text-[11px] text-[#23395B]/70 mt-1">Submitted claims</p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-          <span className="text-xs font-bold uppercase text-blue-600 block mb-1">Pending Volunteer</span>
-          <div className="text-2xl sm:text-3xl font-extrabold text-blue-700">
+        <div className="p-5 rounded-2xl bg-[#FFE4DC] border border-[#F4A340]/30 shadow-sm">
+          <span className="text-xs font-bold uppercase text-[#E5583B] block mb-1">Pending Volunteer</span>
+          <div className="text-2xl sm:text-3xl font-extrabold text-[#E5583B]">
             {stats?.pending_requests || 0}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Awaiting claim</p>
+          <p className="text-[11px] text-[#E5583B]/80 mt-1">Awaiting courier claim</p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-          <span className="text-xs font-bold uppercase text-amber-600 block mb-1">In Transit</span>
-          <div className="text-2xl sm:text-3xl font-extrabold text-amber-700">
+        <div className="p-5 rounded-2xl bg-[#EEE8FF] border border-[#8A5DFF]/25 shadow-sm">
+          <span className="text-xs font-bold uppercase text-purple-900 block mb-1">In Transit</span>
+          <div className="text-2xl sm:text-3xl font-extrabold text-purple-950">
             {(stats?.assigned_requests || 0) + (stats?.collected_requests || 0)}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Volunteer on the move</p>
+          <p className="text-[11px] text-purple-800/70 mt-1">Volunteer on the move</p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-          <span className="text-xs font-bold uppercase text-forest-700 block mb-1">Received</span>
-          <div className="text-2xl sm:text-3xl font-extrabold text-forest-800">
+        <div className="p-5 rounded-2xl bg-[#DDF4E4] border border-[#36A853]/25 shadow-sm">
+          <span className="text-xs font-bold uppercase text-[#174D32] block mb-1">Received</span>
+          <div className="text-2xl sm:text-3xl font-extrabold text-[#174D32]">
             {stats?.completed_requests || 0}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Successfully delivered</p>
+          <p className="text-[11px] text-[#174D32]/70 mt-1">Successfully delivered</p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm col-span-2 lg:col-span-1">
-          <span className="text-xs font-bold uppercase text-slate-400 block mb-1">Total Received</span>
+        <div className="p-5 rounded-2xl bg-white border border-slate-200 col-span-2 lg:col-span-1 shadow-sm">
+          <span className="text-xs font-bold uppercase text-slate-500 block mb-1">Total Received</span>
           <div className="text-2xl sm:text-3xl font-extrabold text-forest-800">
             {stats?.total_quantity_received.toFixed(0) || 0} <span className="text-xs font-medium text-slate-400">units</span>
           </div>

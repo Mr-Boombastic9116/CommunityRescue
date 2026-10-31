@@ -40,11 +40,11 @@ export interface FoodBatch {
   packaging_expiry_time?: string;
   storage_condition?: 'ambient' | 'refrigerated' | 'frozen' | 'hot_holding';
   storage_temperature?: number;
-  expiry_validation_status?: 'valid' | 'adjusted' | 'requires_verification';
+  expiry_validation_status?: 'valid' | 'verified' | 'adjusted' | 'requires_verification' | 'pending_verification' | 'manual_verification_required';
   expiry_rule_applied?: string;
   expiry_adjustment_reason?: string;
   image_url?: string;
-  food_status: 'available' | 'partially_reserved' | 'reserved' | 'requested' | 'assigned' | 'collected' | 'delivered' | 'expired' | 'cancelled';
+  food_status: 'available' | 'partially_reserved' | 'reserved' | 'requested' | 'assigned' | 'collected' | 'delivered' | 'expired' | 'cancelled' | 'pending_verification';
   pickup_address: string;
   latitude?: number;
   longitude?: number;
@@ -52,6 +52,9 @@ export interface FoodBatch {
   updated_at: string;
   remaining_hours?: number;
   is_close_to_expiry: boolean;
+  urgency_level?: 'safe' | 'approaching' | 'urgent' | 'expired';
+  max_holding_hours?: number;
+  approved_maximum_expiry?: string;
 }
 
 export interface PickupRequest {
@@ -147,12 +150,17 @@ export interface VolunteerStats {
 
 // AI Interfaces
 export interface FoodCategorizationResult {
-  category: string;
-  storage_condition: 'ambient' | 'refrigerated' | 'frozen' | 'hot_holding';
-  shelf_life_hours: number;
-  dietary_tags: string[];
-  fssai_guideline: string;
-  confidence: number;
+  normalized_name?: string;
+  suggested_category?: string;
+  category?: string;
+  suggested_storage?: 'ambient' | 'refrigerated' | 'frozen' | 'hot_holding';
+  storage_condition?: 'ambient' | 'refrigerated' | 'frozen' | 'hot_holding';
+  shelf_life_hours?: number;
+  dietary_tags?: string[];
+  allergens?: string[];
+  fssai_guideline?: string;
+  concise_description?: string;
+  confidence?: number;
 }
 
 export interface ChatMessage {
@@ -160,6 +168,9 @@ export interface ChatMessage {
   sender: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  parsed_intent?: ChatbotParsedIntent;
+  tool_executed?: string;
+  confirmation_prompt?: string;
 }
 
 export interface SmartMatchRecommendation {
@@ -199,4 +210,53 @@ export interface AIStatus {
   status: string;
   model: string;
   provider: string;
+  ai_available?: boolean;
+}
+
+// Intent-Aware Chatbot
+export interface ChatbotParsedIntent {
+  intent: string;
+  question_type: string;
+  action?: string | null;
+  main_entity?: string | null;
+  extracted_entities: Record<string, any>;
+  quantity?: number | null;
+  unit?: string | null;
+  relevant_ids: number[];
+  missing_information: string[];
+  backend_action_needed: boolean;
+  confirmation_required: boolean;
+  confirmation_prompt?: string | null;
+}
+
+export interface IntentChatResponse {
+  reply: string;
+  parsed_intent: ChatbotParsedIntent;
+  tool_executed?: string | null;
+  tool_results_count?: number | null;
+  role: string;
+  user_name: string;
+  ai_powered: boolean;
+}
+
+// Expiry Calculation Workflow
+export interface CalculateExpiryRequest {
+  food_name: string;
+  food_category: string;
+  storage_condition: string;
+  prepared_at: string;
+  storage_temperature?: number;
+  packaging_expiry?: string;
+}
+
+export interface CalculateExpiryResponse {
+  food_category: string;
+  storage_condition: string;
+  max_holding_hours: number | null;
+  approved_maximum_expiry: string | null;
+  rule_applied: string | null;
+  rule_source: string | null;
+  rule_clause: string | null;
+  requires_manual_verification: boolean;
+  verification_reason?: string | null;
 }

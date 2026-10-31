@@ -132,12 +132,31 @@ export const AvailableTasks: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {tasks.map((task) => {
             const isUrgent = task.food_batch?.is_close_to_expiry;
+            const imageUrl = task.food_batch?.image_url
+              ? task.food_batch.image_url.startsWith('http')
+                ? task.food_batch.image_url
+                : `http://127.0.0.1:5000${task.food_batch.image_url}`
+              : null;
+
             return (
               <div
                 key={task.request_id}
                 className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col justify-between hover:border-forest-400 transition"
               >
                 <div>
+                  {imageUrl && (
+                    <div className="h-32 -mx-6 -mt-6 mb-4 overflow-hidden rounded-t-3xl bg-slate-100">
+                      <img
+                        src={imageUrl}
+                        alt={task.food_batch?.food_name || 'Food'}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  )}
+
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-amber-50 text-amber-800 border border-amber-200">
                       Claim #{task.request_id}

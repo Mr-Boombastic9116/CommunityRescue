@@ -5,8 +5,9 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: #f8fafc;
-  color: #0f172a;
+  background-color: #F8FBF7;
+  color: #202B25;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
 }
 
 /* Custom scrollbars */
@@ -15,7 +16,7 @@ body {
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #F8FBF7;
 }
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
@@ -24,4 +25,3 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
-

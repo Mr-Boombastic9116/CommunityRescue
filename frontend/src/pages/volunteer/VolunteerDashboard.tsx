@@ -128,28 +128,28 @@ export const VolunteerDashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-          <span className="text-xs font-bold uppercase text-slate-400 block mb-1">Total Rescues</span>
-          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">
+        <div className="p-5 rounded-2xl bg-[#E5F0FF] border border-[#23395B]/15 shadow-sm">
+          <span className="text-xs font-bold uppercase text-[#23395B] block mb-1">Total Rescues</span>
+          <div className="text-2xl sm:text-3xl font-extrabold text-[#23395B]">
             {stats?.total_claimed || 0}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Assignments accepted</p>
+          <p className="text-[11px] text-[#23395B]/70 mt-1">Assignments accepted</p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-          <span className="text-xs font-bold uppercase text-amber-600 block mb-1">Active In-Progress</span>
-          <div className="text-2xl sm:text-3xl font-extrabold text-amber-700">
+        <div className="p-5 rounded-2xl bg-[#FFE4DC] border border-[#F4A340]/30 shadow-sm">
+          <span className="text-xs font-bold uppercase text-[#E5583B] block mb-1">Active In-Progress</span>
+          <div className="text-2xl sm:text-3xl font-extrabold text-[#E5583B]">
             {(stats?.assigned_tasks || 0) + (stats?.collected_tasks || 0)}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Awaiting pickup/dropoff</p>
+          <p className="text-[11px] text-[#E5583B]/80 mt-1">Awaiting pickup/dropoff</p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-          <span className="text-xs font-bold uppercase text-emerald-600 block mb-1">Completed Deliveries</span>
-          <div className="text-2xl sm:text-3xl font-extrabold text-emerald-700">
+        <div className="p-5 rounded-2xl bg-[#DDF4E4] border border-[#36A853]/25 shadow-sm">
+          <span className="text-xs font-bold uppercase text-[#174D32] block mb-1">Completed Deliveries</span>
+          <div className="text-2xl sm:text-3xl font-extrabold text-[#174D32]">
             {stats?.completed_tasks || 0}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Safely handed to NGOs</p>
+          <p className="text-[11px] text-[#174D32]/70 mt-1">Safely handed to NGOs</p>
         </div>
       </div>
 

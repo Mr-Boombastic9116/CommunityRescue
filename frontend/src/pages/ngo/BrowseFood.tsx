@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getDonations, createPickupRequest, getSmartMatchesAI } from '../../api/client';
+import { getDonations, createPickupRequest, getSmartMatchesAI, toggleFavorite, isFavorited, getFavorites } from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { StatusBadge } from '../../components/StatusBadge';
 import { QuantityProgressBar } from '../../components/QuantityProgressBar';
@@ -20,7 +20,8 @@ import {
   RefreshCw,
   Send,
   SlidersHorizontal,
-  Flame
+  Flame,
+  Heart
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -41,7 +42,18 @@ export const BrowseFood: React.FC = () => {
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
   const [onlyUrgent, setOnlyUrgent] = useState(false);
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
+  const [favorites, setFavorites] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setFavorites(getFavorites());
+  }, []);
+
+  const handleToggleFav = (batchId: number) => {
+    toggleFavorite(batchId);
+    setFavorites(getFavorites());
+  };
 
   // Partial Request Modal State
   const [selectedBatch, setSelectedBatch] = useState<FoodBatch | null>(null);
@@ -66,12 +78,15 @@ export const BrowseFood: React.FC = () => {
         search: search || undefined,
         only_available: true,
       });
-      // Filter if urgent only
+      let list = data;
       if (onlyUrgent) {
-        setBatches(data.filter((b) => b.is_close_to_expiry));
-      } else {
-        setBatches(data);
+        list = list.filter((b) => b.is_close_to_expiry);
       }
+      if (onlyFavorites) {
+        const favs = getFavorites();
+        list = list.filter((b) => favs.includes(b.batch_id));
+      }
+      setBatches(list);
     } catch (err) {
       console.error('Failed to browse food', err);
     } finally {
@@ -81,7 +96,7 @@ export const BrowseFood: React.FC = () => {
 
   useEffect(() => {
     fetchBatches();
-  }, [category, onlyUrgent]);
+  }, [category, onlyUrgent, onlyFavorites]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -225,61 +240,132 @@ export const BrowseFood: React.FC = () => {
             ))}
           </div>
 
-          <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-rose-700 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-100 transition">
-            <Flame className="w-3.5 h-3.5 text-rose-600" />
-            <input
-              type="checkbox"
-              checked={onlyUrgent}
-              onChange={(e) => setOnlyUrgent(e.target.checked)}
-              className="rounded text-rose-600 focus:ring-rose-500"
-            />
-            <span>Expiring Soon (&lt; 3h)</span>
-          </label>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-rose-700 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-100 transition">
+              <Flame className="w-3.5 h-3.5 text-rose-600" />
+              <input
+                type="checkbox"
+                checked={onlyUrgent}
+                onChange={(e) => setOnlyUrgent(e.target.checked)}
+                className="rounded text-rose-600 focus:ring-rose-500"
+              />
+              <span>Expiring Soon (&lt; 3h)</span>
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-forest-800 bg-forest-50 px-3 py-1.5 rounded-xl border border-forest-200 hover:bg-forest-100 transition">
+              <Heart className={`w-3.5 h-3.5 ${onlyFavorites ? 'fill-rose-500 text-rose-500' : 'text-forest-700'}`} />
+              <input
+                type="checkbox"
+                checked={onlyFavorites}
+                onChange={(e) => setOnlyFavorites(e.target.checked)}
+                className="rounded text-forest-700 focus:ring-forest-600"
+              />
+              <span>Bookmarked ({favorites.length})</span>
+            </label>
+          </div>
         </div>
       </div>
 
       {/* Food Grid */}
       {loading ? (
-        <div className="py-20 text-center text-slate-400">
-          <RefreshCw className="w-8 h-8 animate-spin mx-auto text-forest-700 mb-2" />
-          <p className="text-sm font-semibold">Scanning community surplus donations...</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="bg-white rounded-3xl border border-slate-200 p-5 space-y-4">
+              <div className="h-44 bg-slate-200 rounded-2xl w-full" />
+              <div className="h-4 bg-slate-200 rounded w-3/4" />
+              <div className="h-3 bg-slate-100 rounded w-full" />
+              <div className="h-8 bg-slate-100 rounded-xl w-full" />
+            </div>
+          ))}
         </div>
       ) : batches.length === 0 ? (
         <div className="py-20 text-center bg-white rounded-3xl border border-slate-200/80 shadow-sm">
           <Utensils className="w-12 h-12 mx-auto text-slate-300 mb-3" />
           <h3 className="text-lg font-bold text-slate-800">No Available Food Found</h3>
           <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-            Try adjusting your category filter or search keywords.
+            {onlyFavorites
+              ? 'No bookmarked donations found. Click the heart icon on any food card to bookmark it!'
+              : 'Try adjusting your category filter or search keywords.'}
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {batches.map((batch) => {
             const remaining = batch.remaining_quantity !== undefined ? batch.remaining_quantity : batch.quantity;
+            const isFav = favorites.includes(batch.batch_id);
+            const imageUrl = batch.image_url
+              ? batch.image_url.startsWith('http')
+                ? batch.image_url
+                : `http://127.0.0.1:5000${batch.image_url}`
+              : null;
+
             return (
               <div
                 key={batch.batch_id}
-                className="bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition flex flex-col overflow-hidden"
+                className="bg-white rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md transition flex flex-col overflow-hidden group"
               >
+                {/* Image or Category Header */}
+                {imageUrl ? (
+                  <div className="h-44 w-full overflow-hidden bg-slate-100 relative">
+                    <img
+                      src={imageUrl}
+                      alt={batch.food_name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleFav(batch.batch_id);
+                      }}
+                      className={`absolute top-3 right-3 p-2 rounded-full backdrop-blur-md shadow-md transition ${
+                        isFav ? 'bg-rose-500 text-white' : 'bg-white/90 text-slate-700 hover:bg-white'
+                      }`}
+                      title={isFav ? 'Remove bookmark' : 'Bookmark this food'}
+                    >
+                      <Heart className={`w-4 h-4 ${isFav ? 'fill-current' : ''}`} />
+                    </button>
+                    <div className="absolute bottom-3 left-3">
+                      <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-white/95 text-slate-900 shadow-sm backdrop-blur-md">
+                        {batch.food_category}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-white border border-slate-200 text-slate-800">
+                      {batch.food_category}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleFav(batch.batch_id)}
+                      className={`p-1.5 rounded-full transition ${
+                        isFav ? 'bg-rose-100 text-rose-600' : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                      title={isFav ? 'Remove bookmark' : 'Bookmark this food'}
+                    >
+                      <Heart className={`w-4 h-4 ${isFav ? 'fill-current' : ''}`} />
+                    </button>
+                  </div>
+                )}
+
                 {/* Card Top */}
                 <div className="p-5 flex-1 space-y-3">
                   <div className="flex items-start justify-between gap-2">
-                    <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-800">
-                      {batch.food_category}
-                    </span>
-                    <ExpiryAlertBanner batch={batch} compact={true} />
-                  </div>
-
-                  <div>
                     <h3 className="font-extrabold text-base text-slate-900 line-clamp-1">
                       {batch.food_name}
                     </h3>
-                    {batch.food_description && (
-                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-                        {batch.food_description}
-                      </p>
-                    )}
+                    <ExpiryAlertBanner batch={batch} compact={true} />
                   </div>
+
+                  {batch.food_description && (
+                    <p className="text-xs text-slate-500 line-clamp-2">
+                      {batch.food_description}
+                    </p>
+                  )}
 
                   {/* Quantity Progress Bar */}
                   <div className="pt-2">

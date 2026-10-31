@@ -89,6 +89,9 @@ class FoodBatchResponse(BaseModel):
     updated_at: datetime
     remaining_hours: Optional[float] = None
     is_close_to_expiry: bool = False
+    urgency_level: Optional[str] = "safe"
+    max_holding_hours: Optional[float] = None
+    approved_maximum_expiry: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 

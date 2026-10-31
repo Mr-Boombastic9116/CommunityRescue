@@ -22,6 +22,10 @@ export const AssignedTasks: React.FC = () => {
   const [actionTask, setActionTask] = useState<PickupRequest | null>(null);
   const [actionType, setActionType] = useState<'collect' | 'deliver' | null>(null);
   const [notes, setNotes] = useState('');
+  const [handoverCode, setHandoverCode] = useState('');
+  const [qrToken, setQrToken] = useState('');
+  const [useQrInput, setUseQrInput] = useState(false);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
@@ -41,26 +45,54 @@ export const AssignedTasks: React.FC = () => {
     fetchAssignedTasks();
   }, []);
 
+  const openActionModal = (task: PickupRequest, type: 'collect' | 'deliver') => {
+    setActionTask(task);
+    setActionType(type);
+    setNotes('');
+    setHandoverCode('');
+    setQrToken('');
+    setUseQrInput(false);
+    setVerificationError(null);
+  };
+
   const handleActionSubmit = async () => {
     if (!actionTask || !actionType) return;
+
+    if (!handoverCode.trim() && !qrToken.trim()) {
+      setVerificationError('Please enter the 6-digit verification code or QR token.');
+      return;
+    }
+
     setSubmitting(true);
+    setVerificationError(null);
 
     try {
       if (actionType === 'collect') {
-        await api.post(`/volunteer/tasks/${actionTask.request_id}/collect`, { notes });
-        setSuccessBanner(`Food marked as collected! Now transport safely to ${actionTask.ngo_name}.`);
+        await api.post(`/volunteer/tasks/${actionTask.request_id}/verify-pickup`, {
+          code: handoverCode.trim(),
+          qr_token: qrToken.trim() || undefined,
+          notes: notes.trim() || undefined,
+        });
+        setSuccessBanner(`Stage 1 Pickup verified! Handover complete. Now transport surplus safely to ${actionTask.ngo_name}.`);
       } else {
-        await api.post(`/volunteer/tasks/${actionTask.request_id}/deliver`, { notes });
-        setSuccessBanner(`Delivery completed successfully! Great job rescuing food.`);
+        await api.post(`/volunteer/tasks/${actionTask.request_id}/verify-delivery`, {
+          code: handoverCode.trim(),
+          qr_token: qrToken.trim() || undefined,
+          notes: notes.trim() || undefined,
+        });
+        setSuccessBanner(`Stage 2 Delivery verified! Food safely handed over to ${actionTask.ngo_name}. Thank you!`);
       }
 
       setActionTask(null);
       setActionType(null);
       setNotes('');
+      setHandoverCode('');
+      setQrToken('');
       fetchAssignedTasks();
       setTimeout(() => setSuccessBanner(null), 6000);
     } catch (err: any) {
-      alert(err.response?.data?.detail || `Failed to update task.`);
+      const errMsg = err.response?.data?.detail || 'Handover verification failed. Please re-check code.';
+      setVerificationError(errMsg);
     } finally {
       setSubmitting(false);
     }
@@ -179,30 +211,22 @@ export const AssignedTasks: React.FC = () => {
                 {task.request_status === 'assigned' && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setActionTask(task);
-                      setActionType('collect');
-                      setNotes('');
-                    }}
+                    onClick={() => openActionModal(task, 'collect')}
                     className="w-full py-3 rounded-xl bg-forest-700 hover:bg-forest-800 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-2"
                   >
                     <CheckCircle2 className="h-4 w-4" />
-                    <span>Step 1: Mark Food Collected at Donor</span>
+                    <span>Stage 1: Verify Pickup with Donor OTP</span>
                   </button>
                 )}
 
                 {task.request_status === 'collected' && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setActionTask(task);
-                      setActionType('deliver');
-                      setNotes('');
-                    }}
+                    onClick={() => openActionModal(task, 'deliver')}
                     className="w-full py-3 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-2"
                   >
                     <CheckCircle2 className="h-4 w-4" />
-                    <span>Step 2: Mark Delivery Completed at NGO</span>
+                    <span>Stage 2: Verify Delivery with NGO Shelter OTP</span>
                   </button>
                 )}
               </div>
@@ -211,37 +235,99 @@ export const AssignedTasks: React.FC = () => {
         </div>
       )}
 
-      {/* Action Notes Modal */}
+      {/* Action Verification Modal */}
       {actionTask && actionType && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
-            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setActionTask(null)} />
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setActionTask(null)} />
 
-            <div className="relative transform overflow-hidden rounded-3xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-md p-6 sm:p-8">
-              <h3 className="text-lg font-bold text-slate-900 mb-1">
-                {actionType === 'collect' ? 'Confirm Food Collection' : 'Confirm Delivery Completed'}
-              </h3>
-              <p className="text-xs text-slate-500 mb-4">
-                {actionType === 'collect'
-                  ? `Confirm that you have received '${actionTask.food_batch?.food_name}' from the donor.`
-                  : `Confirm that you have safely handed '${actionTask.food_batch?.food_name}' to ${actionTask.ngo_name}.`}
-              </p>
+            <div className="relative transform overflow-hidden rounded-3xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-md p-6 sm:p-8 space-y-5">
+              <div>
+                <span className={`px-2.5 py-1 text-[11px] font-bold rounded-lg uppercase tracking-wider inline-block mb-2 ${
+                  actionType === 'collect' ? 'bg-forest-100 text-forest-800' : 'bg-blue-100 text-blue-800'
+                }`}>
+                  {actionType === 'collect' ? 'Stage 1 Handover Verification' : 'Stage 2 Delivery Verification'}
+                </span>
+                <h3 className="text-xl font-extrabold text-slate-900">
+                  {actionType === 'collect' ? 'Verify Food Pickup' : 'Verify Shelter Delivery'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  {actionType === 'collect'
+                    ? `Obtain the 6-digit pickup handover OTP from ${actionTask.food_batch?.donor_name || 'the donor'}.`
+                    : `Obtain the 6-digit delivery handover OTP from ${actionTask.ngo_name || 'the NGO shelter'}.`}
+                </p>
+              </div>
+
+              {verificationError && (
+                <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                  {verificationError}
+                </div>
+              )}
 
               <div className="space-y-4">
+                {!useQrInput ? (
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                      6-Digit Secure Handover OTP
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={handoverCode}
+                      onChange={(e) => setHandoverCode(e.target.value.replace(/\D/g, ''))}
+                      placeholder="• • • • • •"
+                      className="block w-full px-4 py-3 text-2xl font-mono font-black text-center tracking-[0.5em] bg-slate-50 border-2 border-forest-500/40 rounded-2xl focus:border-forest-600 focus:bg-white focus:outline-none transition shadow-inner"
+                      autoFocus
+                    />
+                    <div className="flex justify-between items-center mt-2">
+                      <span className="text-[11px] text-slate-400">One-time single-use token</span>
+                      <button
+                        type="button"
+                        onClick={() => setUseQrInput(true)}
+                        className="text-[11px] text-forest-700 hover:underline font-bold"
+                      >
+                        Enter QR Token instead
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                      QR Handover Token
+                    </label>
+                    <input
+                      type="text"
+                      value={qrToken}
+                      onChange={(e) => setQrToken(e.target.value)}
+                      placeholder="Paste QR token string..."
+                      className="block w-full px-3.5 py-2 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest-600"
+                    />
+                    <div className="flex justify-end mt-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setUseQrInput(false)}
+                        className="text-[11px] text-forest-700 hover:underline font-bold"
+                      >
+                        Use 6-digit OTP instead
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
                     Handoff / Condition Notes (Optional)
                   </label>
                   <textarea
-                    rows={3}
+                    rows={2}
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder={
                       actionType === 'collect'
-                        ? 'e.g. Received 50 portions in hot containers, excellent condition.'
-                        : 'e.g. Handed to shelter manager Mr. Roberts at front intake.'
+                        ? 'e.g. Received in clean containers at temperature.'
+                        : 'e.g. Received by front shelter intake staff.'
                     }
-                    className="block w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest-600"
+                    className="block w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest-600"
                   />
                 </div>
 
@@ -249,21 +335,21 @@ export const AssignedTasks: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setActionTask(null)}
-                    className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
+                    className="px-4 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
-                    disabled={submitting}
+                    disabled={submitting || (!handoverCode && !qrToken)}
                     onClick={handleActionSubmit}
-                    className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-sm transition ${
+                    className={`px-5 py-2.5 text-xs font-bold text-white rounded-xl shadow-sm transition disabled:opacity-50 ${
                       actionType === 'collect'
                         ? 'bg-forest-700 hover:bg-forest-800'
                         : 'bg-blue-700 hover:bg-blue-800'
                     }`}
                   >
-                    {submitting ? 'Updating...' : 'Confirm & Save Log'}
+                    {submitting ? 'Verifying...' : 'Verify Handover & Confirm'}
                   </button>
                 </div>
               </div>

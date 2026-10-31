@@ -96,15 +96,13 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
         content: m.content,
       }));
 
-      const res = await sendAIChatMessage(textToSend, history, {
-        role,
-        user_name: user?.name,
-      });
+      const res = await sendAIChatMessage(textToSend, history);
 
       const aiMsg: ChatMessage = {
         sender: 'assistant',
         content: res.reply,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        parsed_intent: res.parsed_intent,
       };
       setMessages((prev) => [...prev, aiMsg]);
     } catch (err: any) {
@@ -168,6 +166,48 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
               <div className="whitespace-pre-line prose prose-sm max-w-none">
                 {msg.content}
               </div>
+
+              {msg.parsed_intent && (
+                <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5 text-[10px]">
+                  <span className="font-bold uppercase px-1.5 py-0.5 rounded bg-forest-50 text-forest-800 border border-forest-200">
+                    🎯 {msg.parsed_intent.intent}
+                  </span>
+                  {msg.parsed_intent.main_entity && (
+                    <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                      Entity: {msg.parsed_intent.main_entity}
+                    </span>
+                  )}
+                  {msg.parsed_intent.action && (
+                    <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
+                      Action: {msg.parsed_intent.action}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {msg.parsed_intent?.confirmation_required && (
+                <div className="mt-3 p-2.5 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                  <p className="text-xs font-semibold text-amber-900">
+                    ⚠️ {msg.parsed_intent.confirmation_prompt || 'Confirmation required for this action:'}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSend('Yes, I confirm and authorize this action.')}
+                      className="px-3 py-1 bg-forest-700 hover:bg-forest-800 text-white text-xs font-bold rounded-lg shadow-sm"
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSend('No, please cancel this action.')}
+                      className="px-3 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-lg"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
             <span className="text-[10px] text-slate-400 mt-1 px-1">{msg.timestamp}</span>
           </div>

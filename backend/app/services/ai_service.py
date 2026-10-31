@@ -19,10 +19,6 @@ from app.utils.dates import utc_now, to_naive_utc
 
 from app.schemas.ai import (
     FoodCategorizationAIResponse,
-    DetectedFoodItem,
-    MultiFoodRecognitionResponse,
-    FoodDescriptionRequest,
-    FoodDescriptionResponse,
     ChatbotParsedIntent,
     IntentChatResponse,
 )
@@ -112,183 +108,7 @@ class AIService:
             return None
 
     # -------------------------------------------------------------------------
-    # 1. MULTIMODAL FOOD IMAGE RECOGNITION (Section A)
-    # -------------------------------------------------------------------------
-    @classmethod
-    def recognize_food_image(
-        cls,
-        image_bytes: bytes,
-        mime_type: str,
-        donor_context: Optional[str] = None,
-    ) -> MultiFoodRecognitionResponse:
-        """
-        Multimodal Gemma vision recognition for food images.
-        Detects multiple distinct food items in photograph, classifies food type,
-        suggests storage category, and detects visible ingredients only.
-        Does NOT infer exact weight, prep time, expiry date, freshness, or unverified allergens.
-        """
-        system_instruction = (
-            "You are an expert food rescue inspection assistant powered by multimodal Gemma. "
-            "Analyze the provided food photograph. You may recognize ONE or MULTIPLE distinct food items.\n"
-            "For EACH distinct food item visible, return:\n"
-            "- item_index: integer (1, 2, ...)\n"
-            "- food_name: clear, recognizable culinary name\n"
-            "- food_category: ONE of ['Cooked Meals', 'Raw Food/Produce', 'Bakery & Bread', 'Packaged & Canned', 'Dairy & Refrigerated', 'Beverages']\n"
-            "- short_description: 1-2 factual visual sentences about appearance\n"
-            "- visible_ingredients: array of visibly identifiable food items/ingredients ONLY (e.g. ['rice', 'green peas', 'paneer cubes'])\n"
-            "- food_type: ONE of ['cooked', 'raw', 'packaged', 'bakery', 'beverage']\n"
-            "- suggested_storage: ONE of ['ambient', 'refrigerated', 'frozen', 'hot_holding']\n"
-            "- confidence_score: float 0.0 to 1.0\n"
-            "- confidence_level: 'high', 'medium', or 'low'\n"
-            "- review_warning: null if clear, or specific warning string if lighting is dim, image is blurry, or food is ambiguous.\n\n"
-            "STRICT CONSTRAINTS:\n"
-            "1. DO NOT guess exact quantity or weight from the photograph.\n"
-            "2. DO NOT guess preparation time, expiry date, or storage history.\n"
-            "3. DO NOT claim food safety, freshness, or unverified allergens.\n"
-            "4. If uncertain about a food item, set confidence_level='low' and provide a review_warning.\n"
-            "5. Return valid JSON matching: {'detected_items': [...], 'total_items_detected': int, 'overall_notes': str}"
-        )
-
-        prompt = (
-            f"Analyze this food donation photograph.\n"
-            f"Donor Context / Notes: {donor_context or 'None provided'}\n"
-            f"Detect all distinct food items and output valid JSON."
-        )
-
-        raw_json = cls.call_gemma(
-            prompt=prompt,
-            system_instruction=system_instruction,
-            image_bytes=image_bytes,
-            mime_type=mime_type,
-            json_mode=True,
-        )
-
-        if raw_json:
-            try:
-                clean_json = raw_json.strip()
-                if clean_json.startswith("```"):
-                    clean_json = clean_json.split("\n", 1)[1]
-                    if clean_json.endswith("```"):
-                        clean_json = clean_json.rsplit("\n", 1)[0]
-                data = json.loads(clean_json)
-                items = [DetectedFoodItem(**item) for item in data.get("detected_items", [])]
-                if items:
-                    return MultiFoodRecognitionResponse(
-                        detected_items=items,
-                        total_items_detected=len(items),
-                        overall_notes=data.get("overall_notes", "Food recognized via Hosted Gemma 4."),
-                        ai_powered=True,
-                    )
-            except Exception as e:
-                logger.warning(f"[AIService] Multimodal recognition parsing error: {e}. Falling back.")
-
-        return cls._fallback_multimodal_recognition(donor_context)
-
-    @staticmethod
-    def _fallback_multimodal_recognition(donor_context: Optional[str] = None) -> MultiFoodRecognitionResponse:
-        hint = (donor_context or "").lower()
-        cat = "Cooked Meals"
-        name = "Prepared Surplus Meals"
-        storage = "ambient"
-
-        if any(w in hint for w in ["bread", "bakery", "cake", "pastry"]):
-            cat = "Bakery & Bread"
-            name = "Bakery Assortment"
-        elif any(w in hint for w in ["fruit", "vegetable", "produce", "salad"]):
-            cat = "Raw Food/Produce"
-            name = "Fresh Produce"
-        elif any(w in hint for w in ["milk", "paneer", "dairy", "curd"]):
-            cat = "Dairy & Refrigerated"
-            name = "Dairy Surplus"
-            storage = "refrigerated"
-
-        fallback_item = DetectedFoodItem(
-            item_index=1,
-            food_name=name,
-            food_category=cat,
-            short_description="Surplus food item uploaded for community redistribution.",
-            visible_ingredients=[],
-            food_type="cooked" if cat == "Cooked Meals" else "raw",
-            suggested_storage=storage,
-            confidence_score=0.6,
-            confidence_level="medium",
-            review_warning="Recognized via fallback parameters. Please confirm food name, category, and storage details.",
-        )
-        return MultiFoodRecognitionResponse(
-            detected_items=[fallback_item],
-            total_items_detected=1,
-            overall_notes="Offline fallback recognition applied. Donor verification required.",
-            ai_powered=False,
-        )
-
-    # -------------------------------------------------------------------------
-    # 2. IMPROVED AUTOMATIC DESCRIPTION GENERATION (Section B)
-    # -------------------------------------------------------------------------
-    @classmethod
-    def generate_food_description(cls, payload: FoodDescriptionRequest) -> FoodDescriptionResponse:
-        """
-        Builds a dedicated, non-generic food description specific to the food item,
-        avoiding unsupported freshness/allergen claims.
-        """
-        system_instruction = (
-            "You are an expert food cataloger for a nonprofit Food Rescue Network. "
-            "Generate specific, concise, and professional listing text for a food donation.\n"
-            "Inputs provided: Food name, category, confirmed ingredients, storage condition, and donor notes.\n"
-            "Generate JSON with:\n"
-            "- professional_title: clean, clear title (e.g. 'Fresh Vegetable Biryani with Raita')\n"
-            "- detailed_description: 2-3 specific sentences detailing the food items, appearance, and presentation. Avoid generic promotional hype.\n"
-            "- category: confirmed category string\n"
-            "- listing_summary: 1 short sentence summary suitable for mobile notifications\n"
-            "- handling_notes: factual transport/storage notes based strictly on the storage condition (e.g. 'Maintain hot holding >= 60°C until distribution') without unverified claims.\n"
-            "DO NOT invent ingredients, quantities, freshness guarantees, or unverified allergen claims. Output ONLY valid JSON."
-        )
-
-        user_content = (
-            f"Food Name: {payload.food_name}\n"
-            f"Category: {payload.food_category}\n"
-            f"Confirmed Ingredients: {', '.join(payload.confirmed_ingredients or []) or 'Not specified'}\n"
-            f"Storage Condition: {payload.storage_condition}\n"
-            f"Donor Notes: {payload.donor_notes or 'None'}\n"
-            f"Image Visual Context: {payload.image_context or 'None'}"
-        )
-
-        raw_json = cls.call_gemma(prompt=user_content, system_instruction=system_instruction, json_mode=True)
-        if raw_json:
-            try:
-                clean_json = raw_json.strip()
-                if clean_json.startswith("```"):
-                    clean_json = clean_json.split("\n", 1)[1]
-                    if clean_json.endswith("```"):
-                        clean_json = clean_json.rsplit("\n", 1)[0]
-                data = json.loads(clean_json)
-                data["ai_powered"] = True
-                return FoodDescriptionResponse(**data)
-            except Exception as e:
-                logger.warning(f"[AIService] Description generation parsing error: {e}. Falling back.")
-
-        return cls._fallback_generate_description(payload)
-
-    @staticmethod
-    def _fallback_generate_description(payload: FoodDescriptionRequest) -> FoodDescriptionResponse:
-        ing_str = f" Prepared with {', '.join(payload.confirmed_ingredients)}." if payload.confirmed_ingredients else ""
-        desc = f"Freshly prepared batch of {payload.food_name}.{ing_str} Suitable for community meal distribution."
-        storage_map = {
-            "ambient": "Store at ambient room temperature in clean covered containers.",
-            "hot_holding": "Maintain at safe hot holding temperatures (above 60°C) during transport.",
-            "refrigerated": "Keep continuously chilled (below 5°C) to preserve safety.",
-            "frozen": "Keep frozen solid (-18°C) until scheduled distribution.",
-        }
-        return FoodDescriptionResponse(
-            professional_title=payload.food_name.strip(),
-            detailed_description=desc,
-            category=payload.food_category or "Cooked Meals",
-            listing_summary=f"{payload.food_name} available for immediate rescue.",
-            handling_notes=storage_map.get(payload.storage_condition or "ambient", "Keep protected and covered during transport."),
-            ai_powered=False,
-        )
-
-    # -------------------------------------------------------------------------
-    # 3. TEXT CATEGORIZATION & NORMALIZATION
+    # TEXT CATEGORIZATION & NORMALIZATION
     # -------------------------------------------------------------------------
     @classmethod
     def categorize_food(cls, food_name: str, raw_description: Optional[str] = None) -> FoodCategorizationAIResponse:
@@ -366,14 +186,16 @@ class AIService:
     def parse_intent(
         cls,
         message: str,
-        history: List[Dict[str, str]],
-        user_role: str,
-        user_context_summary: str,
+        history: Optional[List[Dict[str, str]]] = None,
+        user_role: str = "general",
+        user_context_summary: str = "",
     ) -> ChatbotParsedIntent:
         """
         Uses Gemma 4 to parse intent, extracted entities, quantities, unit,
         relevant IDs, and determine if an action or confirmation is required.
         """
+        if history is None:
+            history = []
         system_instruction = (
             "You are an intent-classification engine for a Food Rescue application. "
             "Analyze the user message and conversation history in the context of the user's role.\n"
@@ -669,7 +491,9 @@ class AIService:
         ai_reply = cls.call_gemma(prompt=prompt, system_instruction=system_instruction)
         if not ai_reply:
             # Deterministic fallback response synthesis
-            if tool_name == "search_food":
+            if parsed_intent.confirmation_required:
+                ai_reply = f"Please confirm if you would like to proceed with {parsed_intent.action or 'cancelling this request'}. This action cannot be undone."
+            elif tool_name == "search_food":
                 if tool_count and tool_count > 0:
                     items_str = "\n".join([f"- **{i['food_name']}**: {i['remaining_quantity']} {i['unit']} at {i['pickup_address']}" for i in tool_results[:3]])
                     ai_reply = f"Here are available food items matching your request:\n{items_str}\n\nYou can request any portion directly from the Explore Food page."
@@ -822,3 +646,7 @@ class AIService:
             item["priority_rank"] = idx
 
         return items
+
+
+ai_service = AIService
+

@@ -39,11 +39,12 @@ def test_expiry_exceeding_maximum_capped(db_session):
         storage_condition="ambient",
     )
 
-    assert result.validation_status == "adjusted"
+    assert result.validation_status == "exceeded_max"
+    assert result.is_exceeded is True
     expected_max = prep_time + timedelta(hours=4)
     assert result.effective_expiry == expected_max
     assert "FSSAI" in result.rule_applied
-    assert "exceeded the certified safety limit" in result.adjustment_reason
+    assert "exceeds the maximum permitted holding duration" in result.adjustment_reason
 
 def test_hot_holding_storage_condition(db_session):
     now = utc_now()
@@ -101,6 +102,7 @@ def test_packaging_expiry_earlier_caps_effective(db_session):
         packaging_expiry=packaging_expiry,
     )
 
-    assert result.validation_status == "adjusted"
+    assert result.validation_status == "exceeded_max"
+    assert result.is_exceeded is True
     assert result.effective_expiry == packaging_expiry
-    assert "packaging printed expiry" in result.adjustment_reason
+    assert "exceeds the manufacturer printed use-by date" in result.adjustment_reason

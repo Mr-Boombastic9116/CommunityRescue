@@ -1,3 +1,4 @@
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -85,38 +86,54 @@ class WorkflowService:
         request.assigned_at = now
         AllocationService.update_batch_derived_status(db, batch)
 
+        # Generate Stage 1 Pickup Verification Code (OTP & QR)
+        from app.services.verification_service import VerificationService
+        plain_otp = VerificationService.setup_pickup_verification(db, request)
+
         # Step 4: Record Delivery Log
         log = DeliveryLog(
             request_id=request.request_id,
+            batch_id=batch.batch_id,
             performed_by_user_id=volunteer.user_id,
             action="PICKUP_ASSIGNED",
-            notes=f"Pickup task claimed by volunteer {volunteer.volunteer_name} (Phone: {volunteer.phone}).",
+            notes=f"Pickup task claimed by volunteer {volunteer.volunteer_name} (Phone: {volunteer.phone}). Secure handover code initialized.",
             logged_at=now,
         )
         db.add(log)
 
         # Step 5: Send in-app notifications
+        from app.services.notification_service import NotificationService
+        # Notify Donor with Handover Code
+        donor = db.query(Donor).filter(Donor.donor_id == batch.donor_id).first()
+        if donor:
+            NotificationService.notify_donor_volunteer_assigned(
+                db=db,
+                donor_user_id=donor.user_id,
+                volunteer_name=volunteer.volunteer_name,
+                food_name=batch.food_name,
+                req_id=request.request_id,
+                pickup_code=plain_otp,
+            )
+
         # Notify NGO
         ngo = db.query(NGOPartner).filter(NGOPartner.ngo_id == request.ngo_id).first()
         if ngo:
-            db.add(
-                Notification(
-                    user_id=ngo.user_id,
-                    title="Volunteer Assigned",
-                    message=f"Volunteer {volunteer.volunteer_name} has claimed pickup for '{batch.food_name}'.",
-                )
+            NotificationService.notify_ngo_volunteer_assigned(
+                db=db,
+                ngo_user_id=ngo.user_id,
+                volunteer_name=volunteer.volunteer_name,
+                food_name=batch.food_name,
+                req_id=request.request_id,
             )
 
-        # Notify Donor
-        donor = db.query(Donor).filter(Donor.donor_id == batch.donor_id).first()
-        if donor:
-            db.add(
-                Notification(
-                    user_id=donor.user_id,
-                    title="Pickup Scheduled",
-                    message=f"Volunteer {volunteer.volunteer_name} is arriving to pick up '{batch.food_name}'.",
-                )
-            )
+        # Notify Volunteer
+        NotificationService.notify_volunteer_task_claimed(
+            db=db,
+            vol_user_id=volunteer.user_id,
+            donor_name=donor.donor_name if donor else "Donor",
+            address=batch.pickup_address,
+            req_id=request.request_id,
+        )
 
         try:
             db.commit()
@@ -130,7 +147,27 @@ class WorkflowService:
             )
 
     @staticmethod
-    def mark_food_collected(db: Session, request_id: int, volunteer: Volunteer, notes: str = None) -> PickupRequest:
+    def mark_food_collected(
+        db: Session,
+        request_id: int,
+        volunteer: Volunteer,
+        notes: str = None,
+        code: Optional[str] = None,
+        qr_token: Optional[str] = None,
+    ) -> PickupRequest:
+        from app.services.verification_service import VerificationService
+        # If code or qr_token or active pickup hash is present, route through secure verification
+        req = db.query(PickupRequest).filter(PickupRequest.request_id == request_id).first()
+        if req and (code or qr_token or req.pickup_otp_hash):
+            return VerificationService.verify_pickup_code(
+                db=db,
+                request_id=request_id,
+                submitted_code=code,
+                user_id=volunteer.user_id,
+                notes=notes,
+                qr_token=qr_token,
+            )
+
         request = (
             db.query(PickupRequest)
             .filter(PickupRequest.request_id == request_id)
@@ -160,33 +197,40 @@ class WorkflowService:
 
         log = DeliveryLog(
             request_id=request.request_id,
+            batch_id=batch.batch_id if batch else None,
             performed_by_user_id=volunteer.user_id,
             action="FOOD_COLLECTED",
-            notes=notes or f"Food '{batch.food_name}' collected from pickup address by {volunteer.volunteer_name}.",
+            notes=notes or f"Food '{batch.food_name if batch else 'Food'}' collected from pickup address by {volunteer.volunteer_name}.",
             logged_at=now,
         )
         db.add(log)
 
+        # Generate Stage 2 Delivery Code
+        plain_delivery_otp = VerificationService.setup_delivery_verification(db, request)
+
         # Notify NGO
         ngo = db.query(NGOPartner).filter(NGOPartner.ngo_id == request.ngo_id).first()
-        if ngo:
-            db.add(
-                Notification(
-                    user_id=ngo.user_id,
-                    title="Food Collected",
-                    message=f"Volunteer {volunteer.volunteer_name} has picked up '{batch.food_name}' and is in transit.",
-                )
+        if ngo and batch:
+            from app.services.notification_service import NotificationService
+            NotificationService.notify_ngo_food_collected(
+                db=db,
+                ngo_user_id=ngo.user_id,
+                volunteer_name=volunteer.volunteer_name,
+                food_name=batch.food_name,
+                req_id=request.request_id,
+                delivery_code=plain_delivery_otp,
             )
 
         # Notify Donor
-        donor = db.query(Donor).filter(Donor.donor_id == batch.donor_id).first()
-        if donor:
-            db.add(
-                Notification(
-                    user_id=donor.user_id,
-                    title="Donation Collected",
-                    message=f"Your donation '{batch.food_name}' was collected successfully.",
-                )
+        donor = db.query(Donor).filter(Donor.donor_id == batch.donor_id).first() if batch else None
+        if donor and batch:
+            from app.services.notification_service import NotificationService
+            NotificationService.notify_donor_food_collected(
+                db=db,
+                donor_user_id=donor.user_id,
+                volunteer_name=volunteer.volunteer_name,
+                food_name=batch.food_name,
+                req_id=request.request_id,
             )
 
         try:
@@ -198,7 +242,26 @@ class WorkflowService:
             raise HTTPException(status_code=500, detail=f"Failed to record collection: {str(e)}")
 
     @staticmethod
-    def mark_delivery_completed(db: Session, request_id: int, volunteer: Volunteer, notes: str = None) -> PickupRequest:
+    def mark_delivery_completed(
+        db: Session,
+        request_id: int,
+        volunteer: Volunteer,
+        notes: str = None,
+        code: Optional[str] = None,
+        qr_token: Optional[str] = None,
+    ) -> PickupRequest:
+        from app.services.verification_service import VerificationService
+        req = db.query(PickupRequest).filter(PickupRequest.request_id == request_id).first()
+        if req and (code or qr_token or req.delivery_otp_hash):
+            return VerificationService.verify_delivery_code(
+                db=db,
+                request_id=request_id,
+                submitted_code=code,
+                user_id=volunteer.user_id,
+                notes=notes,
+                qr_token=qr_token,
+            )
+
         request = (
             db.query(PickupRequest)
             .filter(PickupRequest.request_id == request_id)
@@ -228,33 +291,37 @@ class WorkflowService:
 
         log = DeliveryLog(
             request_id=request.request_id,
+            batch_id=batch.batch_id if batch else None,
             performed_by_user_id=volunteer.user_id,
             action="DELIVERY_COMPLETED",
-            notes=notes or f"Food '{batch.food_name}' successfully delivered to NGO by {volunteer.volunteer_name}.",
+            notes=notes or f"Food '{batch.food_name if batch else 'Food'}' successfully delivered to NGO by {volunteer.volunteer_name}.",
             logged_at=now,
         )
         db.add(log)
 
         # Notify NGO
         ngo = db.query(NGOPartner).filter(NGOPartner.ngo_id == request.ngo_id).first()
-        if ngo:
-            db.add(
-                Notification(
-                    user_id=ngo.user_id,
-                    title="Delivery Received",
-                    message=f"Donation '{batch.food_name}' has been delivered to your location. Enjoy the meal!",
-                )
+        if ngo and batch:
+            from app.services.notification_service import NotificationService
+            NotificationService.notify_ngo_delivery_completed(
+                db=db,
+                ngo_user_id=ngo.user_id,
+                food_name=batch.food_name,
+                qty=float(request.requested_quantity),
+                unit=request.unit,
+                req_id=request.request_id,
             )
 
         # Notify Donor
-        donor = db.query(Donor).filter(Donor.donor_id == batch.donor_id).first()
-        if donor:
-            db.add(
-                Notification(
-                    user_id=donor.user_id,
-                    title="Donation Completed",
-                    message=f"Thank you! Your donation '{batch.food_name}' was successfully delivered to {ngo.ngo_name if ngo else 'the NGO'}.",
-                )
+        donor = db.query(Donor).filter(Donor.donor_id == batch.donor_id).first() if batch else None
+        if donor and batch and ngo:
+            from app.services.notification_service import NotificationService
+            NotificationService.notify_donor_food_delivered(
+                db=db,
+                donor_user_id=donor.user_id,
+                ngo_name=ngo.ngo_name,
+                food_name=batch.food_name,
+                req_id=request.request_id,
             )
 
         try:

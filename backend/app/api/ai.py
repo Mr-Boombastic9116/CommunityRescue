@@ -1,42 +1,40 @@
+import os
+import uuid
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.database.session import get_db
 from app.models.user import User
 from app.api.deps import get_current_user, require_roles
-from app.services.ai_service import AIService, FoodCategorizationAIResponse
+from app.services.ai_service import AIService
 from app.core.config import settings
+from app.schemas.ai import (
+    FoodCategorizeRequest,
+    FoodCategorizationAIResponse,
+    ChatbotParsedIntent,
+    IntentChatRequest,
+    IntentChatResponse,
+)
 
 router = APIRouter(prefix="/ai", tags=["Hosted Gemma AI"])
-
-class FoodCategorizeRequest(BaseModel):
-    food_name: str = Field(..., min_length=2, max_length=255)
-    description: Optional[str] = None
-
-class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=1000)
-
-class ChatResponse(BaseModel):
-    reply: str
-    role: str
-    user_name: str
-    ai_powered: bool
 
 @router.get("/status")
 def get_ai_status():
     """
-    Returns the operational status of the hosted Gemma 4 AI integration.
+    Returns operational status of the hosted Gemma 4 AI integration.
     """
     available = AIService.is_available()
     return {
         "status": "online" if available else "offline_fallback",
-        "model": settings.GEMMA_MODEL,
+        "model": settings.GEMMA_MODEL or "gemma-4-26b-a4b-it",
         "provider": "Google Gemma 4 Hosted (Gemini API)",
         "sdk": "google-genai",
         "ai_available": available,
     }
 
+# -----------------------------------------------------------------------------
+# TEXT CATEGORIZATION & NORMALIZATION
+# -----------------------------------------------------------------------------
 @router.post("/categorize-food", response_model=FoodCategorizationAIResponse)
 def categorize_food(
     payload: FoodCategorizeRequest,
@@ -51,27 +49,27 @@ def categorize_food(
         raw_description=payload.description,
     )
 
-@router.post("/chat", response_model=ChatResponse)
+# -----------------------------------------------------------------------------
+# INTENT-AWARE CHATBOT & TOOL ROUTING (Requirement D)
+# -----------------------------------------------------------------------------
+@router.post("/chat", response_model=IntentChatResponse)
 def chat_with_assistant(
-    payload: ChatRequest,
+    payload: IntentChatRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Role-aware AI chatbot for Donors, NGOs, and Volunteers.
-    Supplies authorized user-specific data into the prompt context.
-    Never exposes another user's private data or invents records.
+    Intent-aware Gemma 4 chatbot: parses intent, extracts entities and quantities,
+    executes authenticated backend tools against real MySQL data,
+    resolves conversational history references, and enforces confirmation for actions.
     """
-    reply = AIService.chat_with_assistant(
+    return AIService.intent_aware_chat(
         db=db,
         user=current_user,
-        user_message=payload.message,
-    )
-    return ChatResponse(
-        reply=reply,
-        role=current_user.role,
-        user_name=current_user.name,
-        ai_powered=AIService.is_available(),
+        message=payload.message,
+        history=payload.history,
+        confirmed_action=payload.confirmed_action,
+        pending_action_data=payload.pending_action_data,
     )
 
 @router.get("/match-food")
@@ -95,4 +93,3 @@ def prioritize_tasks(
     and provides clear explanations why tasks are prioritized.
     """
     return AIService.prioritize_volunteer_tasks(db=db, volunteer=current_user)
-

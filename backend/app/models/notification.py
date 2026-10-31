@@ -10,6 +10,9 @@ class Notification(Base):
     user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True)
     title = Column(String(255), nullable=False)
     message = Column(Text, nullable=False)
+    notification_type = Column(String(50), nullable=True, index=True)
+    reference_id = Column(Integer, nullable=True)
+    role_target = Column(String(20), nullable=True)
     is_read = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

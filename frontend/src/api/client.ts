@@ -10,6 +10,9 @@ import {
   SmartMatchResult,
   PrioritizedTaskResult,
   AIStatus,
+  IntentChatResponse,
+  CalculateExpiryRequest,
+  CalculateExpiryResponse,
 } from '../types';
 
 const api = axios.create({
@@ -43,7 +46,9 @@ api.interceptors.response.use(
   }
 );
 
-// Donation APIs
+// -----------------------------------------------------------------------------
+// DONATION APIS
+// -----------------------------------------------------------------------------
 export const getDonations = async (params?: {
   status?: string;
   category?: string;
@@ -55,7 +60,7 @@ export const getDonations = async (params?: {
 };
 
 export const getMyDonations = async (): Promise<FoodBatch[]> => {
-  const res = await api.get('/donations/my/list');
+  const res = await api.get('/donations/my');
   return res.data;
 };
 
@@ -79,10 +84,19 @@ export const cancelDonation = async (batchId: number): Promise<FoodBatch> => {
   return res.data;
 };
 
-// Request APIs
+export const calculateExpiryAuto = async (
+  payload: CalculateExpiryRequest
+): Promise<CalculateExpiryResponse> => {
+  const res = await api.post('/donations/calculate-expiry', payload);
+  return res.data;
+};
+
+// -----------------------------------------------------------------------------
+// REQUEST APIS
+// -----------------------------------------------------------------------------
 export const createPickupRequest = async (data: {
   batch_id: number;
-  requested_quantity: number;
+  requested_quantity?: number;
   notes?: string;
 }): Promise<PickupRequest> => {
   const res = await api.post('/requests', data);
@@ -104,7 +118,9 @@ export const cancelPickupRequest = async (requestId: number): Promise<PickupRequ
   return res.data;
 };
 
-// Volunteer APIs
+// -----------------------------------------------------------------------------
+// VOLUNTEER APIS
+// -----------------------------------------------------------------------------
 export const getAvailableTasks = async (): Promise<PickupRequest[]> => {
   const res = await api.get('/volunteer/tasks/available');
   return res.data;
@@ -140,7 +156,21 @@ export const updateAvailability = async (status: 'available' | 'busy' | 'offline
   return res.data;
 };
 
-// AI APIs (Hosted Gemma 4)
+// -----------------------------------------------------------------------------
+// DONATION PHOTO UPLOAD (Ordinary food photography display)
+// -----------------------------------------------------------------------------
+export const uploadDonationImage = async (file: File): Promise<{ image_url: string }> => {
+  const formData = new FormData();
+  formData.append('image', file);
+  const res = await api.post('/donations/upload-image', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data;
+};
+
+// -----------------------------------------------------------------------------
+// AI APIS (Hosted Gemma 4 via Gemini API)
+// -----------------------------------------------------------------------------
 export const getAIStatus = async (): Promise<AIStatus> => {
   const res = await api.get('/ai/status');
   return res.data;
@@ -150,16 +180,22 @@ export const categorizeFoodAI = async (
   food_name: string,
   food_description?: string
 ): Promise<FoodCategorizationResult> => {
-  const res = await api.post('/ai/categorize-food', { food_name, food_description });
+  const res = await api.post('/ai/categorize-food', { food_name, description: food_description });
   return res.data;
 };
 
 export const sendAIChatMessage = async (
   message: string,
   history: Array<{ role: string; content: string }> = [],
-  context?: Record<string, any>
-): Promise<{ reply: string; sources?: string[] }> => {
-  const res = await api.post('/ai/chat', { message, history, context });
+  confirmedAction?: boolean,
+  pendingActionData?: any
+): Promise<IntentChatResponse> => {
+  const res = await api.post('/ai/chat', {
+    message,
+    history,
+    confirmed_action: confirmedAction,
+    pending_action_data: pendingActionData,
+  });
   return res.data;
 };
 
@@ -167,18 +203,32 @@ export const getSmartMatchesAI = async (
   ngo_name?: string,
   ngo_requirements?: string
 ): Promise<SmartMatchResult> => {
-  const res = await api.post('/ai/match-food', { ngo_name, ngo_requirements });
-  return res.data;
+  const res = await api.get('/ai/match-food');
+  return {
+    recommendations: res.data || [],
+    summary: 'Ranked by bacterial holding risk and distribution urgency.',
+  };
 };
 
-export const getPrioritizedTasksAI = async (
-  volunteer_location?: string
-): Promise<PrioritizedTaskResult> => {
-  const res = await api.post('/ai/prioritize-tasks', { volunteer_location });
-  return res.data;
+export const getPrioritizedTasksAI = async (): Promise<PrioritizedTaskResult> => {
+  const res = await api.get('/ai/prioritize-tasks');
+  const items = (res.data || []).map((t: any) => ({
+    request_id: t.request_id,
+    food_name: t.food_name,
+    quantity: t.quantity,
+    unit: t.unit,
+    pickup_address: t.pickup_address,
+    ngo_name: t.ngo_name,
+    priority_level: t.urgency_badge.includes('URGENT') ? 'urgent' : t.urgency_badge.includes('TODAY') ? 'high' : 'standard',
+    reason: t.priority_reason,
+    estimated_minutes_left: t.remaining_minutes,
+  }));
+  return { prioritized_tasks: items };
 };
 
-// Dashboard & Stats
+// -----------------------------------------------------------------------------
+// DASHBOARD & STATS
+// -----------------------------------------------------------------------------
 export const getDashboardStats = async (): Promise<DonorStats | NGOStats | VolunteerStats> => {
   const res = await api.get('/dashboard/stats');
   return res.data;
@@ -189,7 +239,9 @@ export const getPublicImpactSummary = async () => {
   return res.data;
 };
 
-// Notifications
+// -----------------------------------------------------------------------------
+// NOTIFICATIONS
+// -----------------------------------------------------------------------------
 export const getNotifications = async (): Promise<AppNotification[]> => {
   const res = await api.get('/notifications');
   return res.data;
@@ -203,6 +255,37 @@ export const markNotificationRead = async (notificationId: number) => {
 export const markAllNotificationsRead = async () => {
   const res = await api.patch('/notifications/read-all');
   return res.data;
+};
+
+// -----------------------------------------------------------------------------
+// FAVORITES / BOOKMARKS (In-browser Persistent Storage for NGOs)
+// -----------------------------------------------------------------------------
+const FAVORITES_KEY = 'cfrn_favorite_batches';
+
+export const getFavorites = (): number[] => {
+  try {
+    const raw = localStorage.getItem(FAVORITES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+export const toggleFavorite = (batchId: number): boolean => {
+  const current = getFavorites();
+  let updated: number[];
+  const exists = current.includes(batchId);
+  if (exists) {
+    updated = current.filter((id) => id !== batchId);
+  } else {
+    updated = [...current, batchId];
+  }
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify(updated));
+  return !exists;
+};
+
+export const isFavorited = (batchId: number): boolean => {
+  return getFavorites().includes(batchId);
 };
 
 export default api;

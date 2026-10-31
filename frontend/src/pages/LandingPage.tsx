@@ -56,9 +56,15 @@ export const LandingPage: React.FC = () => {
           <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-96 h-96 bg-leaf-500/10 rounded-full blur-3xl pointer-events-none" />
 
           <div className="relative z-10 max-w-3xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-forest-800/80 border border-forest-600/50 text-xs font-semibold text-leaf-300 mb-6">
-              <Sparkles className="h-4 w-4" />
-              <span>Real-Time Local Surplus Food Redistribution</span>
+            <div className="flex flex-wrap items-center gap-2 mb-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-forest-800/80 border border-forest-600/50 text-xs font-semibold text-leaf-300">
+                <Sparkles className="h-4 w-4" />
+                <span>Zero-Waste Community Food Rescue Network</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-forest-800/60 border border-forest-600/40 text-xs font-semibold text-emerald-200">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                <span>FSSAI Regulatory Expiry Enforcement</span>
+              </div>
             </div>
 
             <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.15] mb-6">
@@ -92,44 +98,44 @@ export const LandingPage: React.FC = () => {
       {/* Live Impact Counters */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-          <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+          <div className="p-6 rounded-3xl bg-[#E5F0FF] border border-[#23395B]/15 shadow-sm">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#23395B] block mb-1">
               Food Rescued
             </span>
-            <div className="text-3xl sm:text-4xl font-extrabold text-forest-800">
-              {stats.total_food_rescued_kg.toFixed(0)} <span className="text-lg text-slate-500 font-medium">kg/units</span>
+            <div className="text-3xl sm:text-4xl font-black text-[#23395B]">
+              {stats.total_food_rescued_kg.toFixed(0)} <span className="text-base text-[#23395B]/70 font-semibold">kg/units</span>
             </div>
-            <p className="text-xs text-slate-500 mt-2">Diverted from waste to people in need</p>
+            <p className="text-xs text-[#23395B]/70 mt-2">Diverted from waste to people in need</p>
           </div>
 
-          <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+          <div className="p-6 rounded-3xl bg-[#DDF4E4] border border-[#36A853]/25 shadow-sm">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#174D32] block mb-1">
               Completed Rescues
             </span>
-            <div className="text-3xl sm:text-4xl font-extrabold text-forest-800">
+            <div className="text-3xl sm:text-4xl font-black text-[#174D32]">
               {stats.completed_deliveries}
             </div>
-            <p className="text-xs text-slate-500 mt-2">Verified deliveries delivered by volunteers</p>
+            <p className="text-xs text-[#174D32]/70 mt-2">Verified deliveries delivered by volunteers</p>
           </div>
 
-          <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+          <div className="p-6 rounded-3xl bg-[#FFE4DC] border border-[#F4A340]/30 shadow-sm">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#E5583B] block mb-1">
               Available Right Now
             </span>
-            <div className="text-3xl sm:text-4xl font-extrabold text-forest-800">
+            <div className="text-3xl sm:text-4xl font-black text-[#E5583B]">
               {stats.active_available_donations}
             </div>
-            <p className="text-xs text-slate-500 mt-2">Active batches waiting for NGO requests</p>
+            <p className="text-xs text-[#E5583B]/70 mt-2">Active batches waiting for NGO requests</p>
           </div>
 
-          <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+          <div className="p-6 rounded-3xl bg-[#EEE8FF] border border-[#8A5DFF]/25 shadow-sm">
+            <span className="text-xs font-bold uppercase tracking-wider text-purple-900 block mb-1">
               Network Partners
             </span>
-            <div className="text-3xl sm:text-4xl font-extrabold text-forest-800">
+            <div className="text-3xl sm:text-4xl font-black text-purple-950">
               {stats.total_donors + stats.total_ngos + stats.total_volunteers}
             </div>
-            <p className="text-xs text-slate-500 mt-2">Donors, NGOs, and Volunteers united</p>
+            <p className="text-xs text-purple-800/70 mt-2">Donors, NGOs, and Volunteers united</p>
           </div>
         </div>
       </section>
@@ -228,48 +234,71 @@ export const LandingPage: React.FC = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {recentBatches.map((batch) => (
-              <div
-                key={batch.batch_id}
-                className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm flex flex-col justify-between hover:border-forest-300 transition"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700">
-                      {batch.food_category}
-                    </span>
-                    <StatusBadge status={batch.food_status} isUrgent={batch.is_close_to_expiry} />
-                  </div>
+            {recentBatches.map((batch) => {
+              const imageUrl = batch.image_url
+                ? batch.image_url.startsWith('http')
+                  ? batch.image_url
+                  : `http://127.0.0.1:5000${batch.image_url}`
+                : null;
 
-                  <h3 className="font-bold text-base text-slate-900 mb-1">{batch.food_name}</h3>
-                  <p className="text-xs text-slate-500 mb-4">By {batch.donor_name || 'Verified Donor'}</p>
+              return (
+                <div
+                  key={batch.batch_id}
+                  className="bg-white rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between hover:shadow-md transition overflow-hidden"
+                >
+                  {imageUrl && (
+                    <div className="h-44 w-full overflow-hidden bg-slate-100">
+                      <img
+                        src={imageUrl}
+                        alt={batch.food_name}
+                        className="w-full h-full object-cover hover:scale-105 transition duration-300"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  )}
 
-                  <div className="space-y-2 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl mb-4">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Quantity:</span>
-                      <span className="font-semibold text-slate-800">{batch.quantity} {batch.unit}</span>
+                  <div className="p-6 flex-1 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700">
+                          {batch.food_category}
+                        </span>
+                        <StatusBadge status={batch.food_status} isUrgent={batch.is_close_to_expiry} />
+                      </div>
+
+                      <h3 className="font-extrabold text-base text-slate-900 mb-1">{batch.food_name}</h3>
+                      <p className="text-xs text-slate-500 mb-4">By {batch.donor_name || 'Verified Donor'}</p>
+
+                      <div className="space-y-2 text-xs text-slate-600 bg-slate-50 p-3 rounded-2xl mb-4">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Quantity:</span>
+                          <span className="font-semibold text-slate-800">{batch.quantity} {batch.unit}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Time Left:</span>
+                          <span className={`font-semibold ${batch.is_close_to_expiry ? 'text-rose-600' : 'text-slate-800'}`}>
+                            {batch.remaining_hours !== undefined ? `${batch.remaining_hours} hours remaining` : 'Calculating'}
+                          </span>
+                        </div>
+                        <div className="flex items-start gap-1 pt-1 border-t border-slate-200/50 text-[11px] text-slate-500">
+                          <MapPin className="h-3 w-3 mt-0.5 text-slate-400 flex-shrink-0" />
+                          <span className="line-clamp-1">{batch.pickup_address}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Time Left:</span>
-                      <span className={`font-semibold ${batch.is_close_to_expiry ? 'text-rose-600' : 'text-slate-800'}`}>
-                        {batch.remaining_hours !== undefined ? `${batch.remaining_hours} hours remaining` : 'Calculating'}
-                      </span>
-                    </div>
-                    <div className="flex items-start gap-1 pt-1 border-t border-slate-200/50 text-[11px] text-slate-500">
-                      <MapPin className="h-3 w-3 mt-0.5 text-slate-400 flex-shrink-0" />
-                      <span className="line-clamp-1">{batch.pickup_address}</span>
-                    </div>
+
+                    <Link
+                      to="/browse"
+                      className="w-full py-2.5 text-center text-xs font-bold text-forest-800 bg-forest-50 hover:bg-forest-100 rounded-xl transition"
+                    >
+                      View Details
+                    </Link>
                   </div>
                 </div>
-
-                <Link
-                  to="/browse"
-                  className="w-full py-2.5 text-center text-xs font-bold text-forest-800 bg-forest-50 hover:bg-forest-100 rounded-xl transition"
-                >
-                  View Details
-                </Link>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

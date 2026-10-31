@@ -220,3 +220,184 @@ def cancel_request(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to cancel request: {str(e)}")
+
+@router.get("/{request_id}/timeline")
+def get_request_timeline(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.timeline_service import TimelineService
+    req = db.query(PickupRequest).filter(PickupRequest.request_id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Pickup request not found.")
+
+    is_owner_ngo = current_user.role == "ngo" and current_user.ngo and current_user.ngo.ngo_id == req.ngo_id
+    is_batch_donor = current_user.role == "donor" and current_user.donor and req.food_batch and current_user.donor.donor_id == req.food_batch.donor_id
+    is_volunteer = current_user.role == "volunteer"
+    is_admin = current_user.role == "admin"
+    if not (is_owner_ngo or is_batch_donor or is_volunteer or is_admin):
+        raise HTTPException(status_code=403, detail="Access denied: You cannot view the timeline for this request.")
+
+    timeline = TimelineService.get_request_timeline(db, request_id, requesting_user=current_user)
+    return {"request_id": request_id, "stages": timeline}
+
+@router.get("/{request_id}/handover-code")
+def get_handover_code(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns the secure handover code and QR token for the authorized party:
+    - If donor and status is 'assigned': returns Stage 1 Pickup code.
+    - If NGO and status is 'collected': returns Stage 2 Delivery code.
+    - Volunteer or unauthorized user: HTTP 403 Forbidden.
+    """
+    req = db.query(PickupRequest).filter(PickupRequest.request_id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Pickup request not found.")
+
+    if current_user.role == "volunteer":
+        raise HTTPException(
+            status_code=403,
+            detail="Couriers cannot inspect handover codes directly. Obtain the code in person from the donor or NGO."
+        )
+
+    is_donor = current_user.role == "donor" and current_user.donor and req.food_batch and current_user.donor.donor_id == req.food_batch.donor_id
+    is_ngo = current_user.role == "ngo" and current_user.ngo and current_user.ngo.ngo_id == req.ngo_id
+
+    if not (is_donor or is_ngo):
+        raise HTTPException(status_code=403, detail="Access denied: You are not authorized to view this handover code.")
+
+    import re
+    if is_donor:
+        if req.request_status != "assigned":
+            return {
+                "type": "pickup",
+                "request_id": req.request_id,
+                "status": req.request_status,
+                "handover_code": None,
+                "message": f"Pickup code is not active (current status: '{req.request_status}')"
+            }
+
+        notif = db.query(Notification).filter(
+            Notification.user_id == current_user.user_id,
+            Notification.reference_id == req.request_id,
+            Notification.notification_type.in_(["pickup_code", "donor_volunteer_assigned"])
+        ).order_by(Notification.created_at.desc()).first()
+
+        code = None
+        if notif and notif.message:
+            m = re.search(r'\b\d{6}\b', notif.message)
+            if m:
+                code = m.group(0)
+
+        if not code or not req.pickup_otp_hash:
+            from app.services.verification_service import VerificationService
+            code = VerificationService.setup_pickup_verification(db, req)
+            from app.services.notification_service import NotificationService
+            NotificationService.notify_donor_volunteer_assigned(
+                db, current_user.user_id, req.volunteer.volunteer_name if req.volunteer else "Courier", req.food_batch.food_name if req.food_batch else "Food", req.request_id, code
+            )
+
+        return {
+            "type": "pickup",
+            "request_id": req.request_id,
+            "status": req.request_status,
+            "handover_code": code,
+            "qr_token": req.qr_token,
+            "expires_at": req.pickup_otp_expires_at.isoformat() if req.pickup_otp_expires_at else None,
+            "attempts_remaining": max(0, 5 - (req.pickup_attempts_count or 0)),
+            "instructions": "Provide this 6-digit code or QR code to the volunteer courier when handing over the food.",
+        }
+
+    if is_ngo:
+        if req.request_status != "collected":
+            return {
+                "type": "delivery",
+                "request_id": req.request_id,
+                "status": req.request_status,
+                "handover_code": None,
+                "message": f"Delivery code is not active (current status: '{req.request_status}')"
+            }
+
+        notif = db.query(Notification).filter(
+            Notification.user_id == current_user.user_id,
+            Notification.reference_id == req.request_id,
+            Notification.notification_type.in_(["delivery_code", "ngo_food_collected"])
+        ).order_by(Notification.created_at.desc()).first()
+
+        code = None
+        if notif and notif.message:
+            m = re.search(r'\b\d{6}\b', notif.message)
+            if m:
+                code = m.group(0)
+
+        if not code or not req.delivery_otp_hash:
+            from app.services.verification_service import VerificationService
+            code = VerificationService.setup_delivery_verification(db, req)
+            from app.services.notification_service import NotificationService
+            NotificationService.notify_ngo_food_collected(
+                db, current_user.user_id, req.volunteer.volunteer_name if req.volunteer else "Courier", req.food_batch.food_name if req.food_batch else "Food", req.request_id, code
+            )
+
+        return {
+            "type": "delivery",
+            "request_id": req.request_id,
+            "status": req.request_status,
+            "handover_code": code,
+            "qr_token": req.qr_token,
+            "expires_at": req.delivery_otp_expires_at.isoformat() if req.delivery_otp_expires_at else None,
+            "attempts_remaining": max(0, 5 - (req.delivery_attempts_count or 0)),
+            "instructions": "Provide this 6-digit code or QR code to the volunteer courier when receiving the food at your shelter.",
+        }
+
+@router.post("/{request_id}/refresh-handover-code")
+def refresh_handover_code(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Regenerates a fresh handover code if expired or locked.
+    """
+    req = db.query(PickupRequest).filter(PickupRequest.request_id == request_id).with_for_update().first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Pickup request not found.")
+
+    is_donor = current_user.role == "donor" and current_user.donor and req.food_batch and current_user.donor.donor_id == req.food_batch.donor_id
+    is_ngo = current_user.role == "ngo" and current_user.ngo and current_user.ngo.ngo_id == req.ngo_id
+
+    from app.services.verification_service import VerificationService
+    from app.services.notification_service import NotificationService
+
+    if is_donor:
+        if req.request_status != "assigned":
+            raise HTTPException(status_code=400, detail="Cannot refresh pickup code: Task is not in 'assigned' status.")
+        code = VerificationService.setup_pickup_verification(db, req)
+        NotificationService.notify_donor_volunteer_assigned(
+            db, current_user.user_id, req.volunteer.volunteer_name if req.volunteer else "Courier", req.food_batch.food_name if req.food_batch else "Food", req.request_id, code
+        )
+        return {
+            "handover_code": code,
+            "type": "pickup",
+            "qr_token": req.qr_token,
+            "message": "New pickup verification code generated.",
+        }
+
+    if is_ngo:
+        if req.request_status != "collected":
+            raise HTTPException(status_code=400, detail="Cannot refresh delivery code: Food is not in 'collected' (in transit) status.")
+        code = VerificationService.setup_delivery_verification(db, req)
+        NotificationService.notify_ngo_food_collected(
+            db, current_user.user_id, req.volunteer.volunteer_name if req.volunteer else "Courier", req.food_batch.food_name if req.food_batch else "Food", req.request_id, code
+        )
+        return {
+            "handover_code": code,
+            "type": "delivery",
+            "qr_token": req.qr_token,
+            "message": "New delivery verification code generated.",
+        }
+
+    raise HTTPException(status_code=403, detail="Access denied.")

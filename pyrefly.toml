@@ -1,0 +1,8 @@
+# Pyrefly Configuration for Community Food Rescue Network
+# Resolves first-party package roots and project virtual environment
+
+search-path = ["backend"]
+site-package-path = ["venv/Lib/site-packages"]
+python-version = "3.11"
+python-platform = "windows"
+

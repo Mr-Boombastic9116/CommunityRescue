@@ -16,6 +16,15 @@ router = APIRouter(prefix="/volunteer", tags=["Volunteer Tasks"])
 
 class StatusUpdateNote(BaseModel):
     notes: Optional[str] = None
+    code: Optional[str] = None
+    pickup_code: Optional[str] = None
+    delivery_code: Optional[str] = None
+    qr_token: Optional[str] = None
+
+class VerifyHandoverPayload(BaseModel):
+    code: Optional[str] = None
+    qr_token: Optional[str] = None
+    notes: Optional[str] = None
 
 class AvailabilityUpdate(BaseModel):
     status: str
@@ -96,6 +105,64 @@ def get_delivery_history(
     )
     return [format_request_response(t) for t in tasks]
 
+@router.post("/tasks/{request_id}/verify-pickup", response_model=PickupRequestResponse)
+def verify_pickup_handover(
+    request_id: int,
+    payload: VerifyHandoverPayload,
+    current_user: User = Depends(require_roles(["volunteer"])),
+    db: Session = Depends(get_db),
+):
+    volunteer = current_user.volunteer
+    if not volunteer:
+        raise HTTPException(status_code=400, detail="Volunteer profile not found.")
+
+    req = db.query(PickupRequest).filter(PickupRequest.request_id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Pickup request not found.")
+
+    if req.volunteer_id != volunteer.volunteer_id:
+        raise HTTPException(status_code=403, detail="Access denied: You are not assigned to this pickup task.")
+
+    from app.services.verification_service import VerificationService
+    updated_req = VerificationService.verify_pickup_code(
+        db=db,
+        request_id=request_id,
+        submitted_code=payload.code,
+        user_id=current_user.user_id,
+        notes=payload.notes,
+        qr_token=payload.qr_token,
+    )
+    return format_request_response(updated_req)
+
+@router.post("/tasks/{request_id}/verify-delivery", response_model=PickupRequestResponse)
+def verify_delivery_handover(
+    request_id: int,
+    payload: VerifyHandoverPayload,
+    current_user: User = Depends(require_roles(["volunteer"])),
+    db: Session = Depends(get_db),
+):
+    volunteer = current_user.volunteer
+    if not volunteer:
+        raise HTTPException(status_code=400, detail="Volunteer profile not found.")
+
+    req = db.query(PickupRequest).filter(PickupRequest.request_id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Pickup request not found.")
+
+    if req.volunteer_id != volunteer.volunteer_id:
+        raise HTTPException(status_code=403, detail="Access denied: You are not assigned to this delivery task.")
+
+    from app.services.verification_service import VerificationService
+    updated_req = VerificationService.verify_delivery_code(
+        db=db,
+        request_id=request_id,
+        submitted_code=payload.code,
+        user_id=current_user.user_id,
+        notes=payload.notes,
+        qr_token=payload.qr_token,
+    )
+    return format_request_response(updated_req)
+
 @router.post("/tasks/{request_id}/collect", response_model=PickupRequestResponse)
 def collect_food(
     request_id: int,
@@ -107,7 +174,15 @@ def collect_food(
     if not volunteer:
         raise HTTPException(status_code=400, detail="Volunteer profile not found.")
 
-    updated_req = WorkflowService.mark_food_collected(db, request_id, volunteer, payload.notes)
+    code_to_use = payload.code or payload.pickup_code
+    updated_req = WorkflowService.mark_food_collected(
+        db=db,
+        request_id=request_id,
+        volunteer=volunteer,
+        notes=payload.notes,
+        code=code_to_use,
+        qr_token=payload.qr_token,
+    )
     return format_request_response(updated_req)
 
 @router.post("/tasks/{request_id}/deliver", response_model=PickupRequestResponse)
@@ -121,7 +196,15 @@ def complete_delivery(
     if not volunteer:
         raise HTTPException(status_code=400, detail="Volunteer profile not found.")
 
-    updated_req = WorkflowService.mark_delivery_completed(db, request_id, volunteer, payload.notes)
+    code_to_use = payload.code or payload.delivery_code
+    updated_req = WorkflowService.mark_delivery_completed(
+        db=db,
+        request_id=request_id,
+        volunteer=volunteer,
+        notes=payload.notes,
+        code=code_to_use,
+        qr_token=payload.qr_token,
+    )
     return format_request_response(updated_req)
 
 @router.put("/availability")

@@ -17,13 +17,23 @@ import {
   ChevronRight,
   Radio,
   Clock,
-  HeartHandshake
+  HeartHandshake,
+  Bell,
+  Navigation
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { updateAvailability } from '../api/client';
 
 interface SidebarProps {
   onOpenAIDrawer: () => void;
+}
+
+interface NavItem {
+  label: string;
+  to: string;
+  icon: any;
+  badge?: string;
+  highlight?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ onOpenAIDrawer }) => {
@@ -61,36 +71,41 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenAIDrawer }) => {
 
   if (!user) return null;
 
-  // Nav Items per Role
-  const navItems = {
+  // Nav Items per Role (Requirement 3: strictly role-specific navigation)
+  const allNavItems: Record<string, NavItem[]> = {
     donor: [
       { label: 'Overview', to: '/donor/dashboard', icon: LayoutDashboard },
-      { label: 'Create Donation', to: '/donor/donations/create', icon: PlusCircle, badge: 'AI Assist' },
+      { label: 'Create Donation', to: '/donor/donations/create', icon: PlusCircle },
       { label: 'My Donations', to: '/donor/donations', icon: Package },
       { label: 'Quantity Allocation', to: '/donor/allocations', icon: PieChart },
-      { label: 'Expiry & FSSAI Alerts', to: '/donor/expiry-alerts', icon: ShieldAlert },
+      { label: 'Expiry Alerts', to: '/donor/expiry-alerts', icon: ShieldAlert },
+      { label: 'Notifications', to: '/notifications', icon: Bell },
       { label: 'AI Assistant', to: '/ai-assistant', icon: Sparkles, highlight: true },
-      { label: 'Profile & Settings', to: '/profile', icon: User },
+      { label: 'Profile', to: '/profile', icon: User },
     ],
     ngo: [
       { label: 'Overview', to: '/ngo/dashboard', icon: LayoutDashboard },
-      { label: 'Explore Food', to: '/ngo/browse', icon: Utensils, badge: 'Smart Match' },
+      { label: 'Explore Food', to: '/ngo/browse', icon: Utensils },
       { label: 'My Requests', to: '/ngo/requests', icon: ClipboardList },
       { label: 'Quantity Allocation', to: '/ngo/allocations', icon: PieChart },
-      { label: 'Expiry & FSSAI Alerts', to: '/ngo/expiry-alerts', icon: ShieldAlert },
+      { label: 'Request Tracking', to: '/ngo/requests', icon: Truck },
+      { label: 'Notifications', to: '/notifications', icon: Bell },
       { label: 'AI Assistant', to: '/ai-assistant', icon: Sparkles, highlight: true },
-      { label: 'Profile & Settings', to: '/profile', icon: User },
+      { label: 'Profile', to: '/profile', icon: User },
     ],
     volunteer: [
       { label: 'Overview', to: '/volunteer/dashboard', icon: LayoutDashboard },
-      { label: 'Available Tasks', to: '/volunteer/tasks', icon: MapPin, badge: 'AI Prioritize' },
+      { label: 'Available Tasks', to: '/volunteer/tasks', icon: MapPin },
       { label: 'My Assignments', to: '/volunteer/assigned', icon: Truck },
+      { label: 'Pickup Tracking', to: '/volunteer/assigned', icon: Navigation },
       { label: 'Delivery History', to: '/volunteer/history', icon: CheckCircle },
-      { label: 'Expiry & FSSAI Alerts', to: '/volunteer/expiry-alerts', icon: ShieldAlert },
+      { label: 'Notifications', to: '/notifications', icon: Bell },
       { label: 'AI Assistant', to: '/ai-assistant', icon: Sparkles, highlight: true },
-      { label: 'Profile & Settings', to: '/profile', icon: User },
+      { label: 'Profile', to: '/profile', icon: User },
     ],
-  }[role || 'donor'] || [];
+  };
+
+  const navItems: NavItem[] = allNavItems[role || 'donor'] || [];
 
   const roleLabels: Record<string, { title: string; color: string }> = {
     donor: { title: 'Food Donor', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },

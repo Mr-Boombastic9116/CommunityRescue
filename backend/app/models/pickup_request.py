@@ -13,6 +13,16 @@ class PickupRequest(Base):
     requested_quantity = Column(Numeric(10, 2), nullable=False, default=1.0)
     unit = Column(String(50), nullable=False, default="units")
     request_status = Column(String(50), default="requested", nullable=False)  # 'requested', 'assigned', 'collected', 'delivered', 'cancelled', 'rejected'
+    
+    # Feature E: Two-Stage OTP & QR Handover Verification
+    pickup_otp_hash = Column(String(128), nullable=True)
+    pickup_otp_expires_at = Column(DateTime, nullable=True)
+    pickup_attempts_count = Column(Integer, default=0, nullable=False)
+    delivery_otp_hash = Column(String(128), nullable=True)
+    delivery_otp_expires_at = Column(DateTime, nullable=True)
+    delivery_attempts_count = Column(Integer, default=0, nullable=False)
+    qr_token = Column(String(64), nullable=True, index=True)
+
     requested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     assigned_at = Column(DateTime, nullable=True)
     collected_at = Column(DateTime, nullable=True)

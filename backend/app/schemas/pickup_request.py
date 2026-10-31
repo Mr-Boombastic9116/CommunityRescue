@@ -27,6 +27,11 @@ class PickupRequestResponse(BaseModel):
     completed_at: Optional[datetime] = None
     updated_at: datetime
     food_batch: Optional[FoodBatchResponse] = None
+    pickup_code: Optional[str] = None
+    delivery_code: Optional[str] = None
+    qr_token: Optional[str] = None
+    pickup_attempts_count: Optional[int] = 0
+    delivery_attempts_count: Optional[int] = 0
 
     model_config = ConfigDict(from_attributes=True)
 

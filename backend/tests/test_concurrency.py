@@ -34,7 +34,7 @@ def test_prevent_concurrent_claim():
                 "quantity": 25.0,
                 "unit": "servings",
                 "prepared_at": (now - timedelta(hours=1)).isoformat(),
-                "expiry_time": (now + timedelta(hours=5)).isoformat(),
+                "expiry_time": (now + timedelta(hours=2)).isoformat(),
                 "pickup_address": "Gate 1",
             },
             headers={"Authorization": f"Bearer {donor_tok}"},

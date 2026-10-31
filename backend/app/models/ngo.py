@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Numeric, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, Numeric, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from app.database.session import Base
 
@@ -12,6 +12,12 @@ class NGOPartner(Base):
     address = Column(Text, nullable=False)
     latitude = Column(Numeric(10, 8), nullable=True)
     longitude = Column(Numeric(11, 8), nullable=True)
+
+    # Feature D: Smart Matching Parameters
+    preferred_categories = Column(String(255), nullable=True, default="Cooked Meals, Bakery & Bread, Raw Food/Produce")
+    capacity_servings = Column(Integer, nullable=True, default=100)
+    operating_hours = Column(String(100), nullable=True, default="09:00 - 21:00")
+    is_active = Column(Boolean, default=True, nullable=False)
 
     user = relationship("User", back_populates="ngo")
     pickup_requests = relationship("PickupRequest", back_populates="ngo", cascade="all, delete-orphan")
