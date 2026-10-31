@@ -23,7 +23,7 @@ from app.services.expiry_service import calculate_expiry_metadata, process_food_
 from app.services.expiry_validation_service import ExpiryValidationService
 from app.services.allocation_service import AllocationService
 from app.schemas.ai import CalculateExpiryRequest, CalculateExpiryResponse
-from app.utils.dates import utc_now, to_naive_utc
+from app.utils.dates import utc_now, to_naive_utc, format_utc_iso
 
 router = APIRouter(prefix="/donations", tags=["Donations"])
 
@@ -69,14 +69,14 @@ def calculate_expiry_endpoint(
     from curated FSSAI food safety rules for the donor workflow.
     """
     try:
-        prep_at = to_naive_utc(datetime.fromisoformat(payload.prepared_at.replace("Z", "+00:00")))
+        prep_at = to_naive_utc(payload.prepared_at)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid prepared_at format: {e}")
 
     pkg_time = None
     if payload.packaging_expiry:
         try:
-            pkg_time = datetime.fromisoformat(payload.packaging_expiry.replace("Z", "+00:00"))
+            pkg_time = to_naive_utc(payload.packaging_expiry)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid packaging_expiry format: {e}")
     
@@ -113,7 +113,7 @@ def calculate_expiry_endpoint(
         food_category=payload.food_category,
         storage_condition=payload.storage_condition,
         max_holding_hours=validation.max_permitted_hours,
-        approved_maximum_expiry=validation.max_allowed_expiry.isoformat() if validation.max_allowed_expiry else None,
+        approved_maximum_expiry=format_utc_iso(validation.max_allowed_expiry) if validation.max_allowed_expiry else None,
         rule_applied=validation.rule_applied,
         rule_source=validation.source_name,
         rule_clause=rule.rule_version if rule else None,
@@ -219,7 +219,7 @@ def create_donation(
     if user_exp_time <= prep_at:
         raise HTTPException(
             status_code=400,
-            detail="Expiry time must be later than preparation time.",
+            detail="Expiry time must be strictly later than preparation time.",
         )
 
     # Validation: Expiry time must be in the future
@@ -423,7 +423,7 @@ def update_donation(
     user_exp = to_naive_utc(user_exp)
 
     if user_exp <= to_naive_utc(batch.prepared_at):
-        raise HTTPException(status_code=400, detail="Expiry time must be later than preparation time.")
+        raise HTTPException(status_code=400, detail="Expiry time must be strictly later than preparation time.")
 
     if user_exp <= now:
         raise HTTPException(status_code=400, detail="Expiry time must be in the future.")

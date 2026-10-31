@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, model_validator, ConfigDict
-from app.utils.dates import to_naive_utc, utc_now
+from pydantic import BaseModel, Field, model_validator, ConfigDict, field_serializer
+from app.utils.dates import to_naive_utc, utc_now, format_utc_iso
 
 class FoodBatchCreate(BaseModel):
     food_name: str = Field(..., min_length=2, max_length=255)
@@ -26,7 +26,7 @@ class FoodBatchCreate(BaseModel):
         if self.packaging_expiry_time:
             self.packaging_expiry_time = to_naive_utc(self.packaging_expiry_time)
         if self.expiry_time <= self.prepared_at:
-            raise ValueError("Expiry time must be later than preparation time.")
+            raise ValueError("Expiry time must be strictly later than preparation time.")
         return self
 
 class FoodBatchUpdate(BaseModel):
@@ -54,7 +54,7 @@ class FoodBatchUpdate(BaseModel):
         if self.packaging_expiry_time:
             self.packaging_expiry_time = to_naive_utc(self.packaging_expiry_time)
         if self.prepared_at and self.expiry_time and self.expiry_time <= self.prepared_at:
-            raise ValueError("Expiry time must be later than preparation time.")
+            raise ValueError("Expiry time must be strictly later than preparation time.")
         return self
 
 class FoodBatchResponse(BaseModel):
@@ -94,6 +94,20 @@ class FoodBatchResponse(BaseModel):
     approved_maximum_expiry: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer(
+        "prepared_at",
+        "user_expiry_time",
+        "effective_expiry_time",
+        "expiry_time",
+        "packaging_expiry_time",
+        "created_at",
+        "updated_at",
+        "approved_maximum_expiry",
+        when_used="json",
+    )
+    def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
+        return format_utc_iso(dt)
 
 class FoodBatchDetailResponse(FoodBatchResponse):
     requests: List[Dict[str, Any]] = []

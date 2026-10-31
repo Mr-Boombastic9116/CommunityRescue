@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { CalculateExpiryResponse } from '../../types';
 import { extractErrorMessage } from '../../utils/errors';
+import { formatDatetimeLocal, parseServerDate, safeFormatDate } from '../../utils/formatters';
 
 const CATEGORIES = [
   'Cooked Meals',
@@ -36,11 +37,6 @@ const UNITS = ['servings', 'kg', 'packets', 'liters', 'boxes'];
 export const EditDonation: React.FC = () => {
   const { batchId } = useParams<{ batchId: string }>();
   const navigate = useNavigate();
-
-  const formatDatetimeLocal = (date: Date) => {
-    const pad = (n: number) => (n < 10 ? '0' + n : n);
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-  };
 
   // Form Fields
   const [foodName, setFoodName] = useState('');
@@ -92,13 +88,13 @@ export const EditDonation: React.FC = () => {
         setStorageTemperature(data.storage_temperature ?? 25);
 
         if (data.prepared_at) {
-          setPreparedAt(formatDatetimeLocal(new Date(data.prepared_at)));
+          setPreparedAt(formatDatetimeLocal(data.prepared_at));
         }
         if (data.expiry_time) {
-          setExpiryTime(formatDatetimeLocal(new Date(data.expiry_time)));
+          setExpiryTime(formatDatetimeLocal(data.expiry_time));
         }
         if (data.packaging_expiry_time) {
-          setPackagingExpiryTime(formatDatetimeLocal(new Date(data.packaging_expiry_time)));
+          setPackagingExpiryTime(formatDatetimeLocal(data.packaging_expiry_time));
         }
       } catch (err: any) {
         setError(extractErrorMessage(err, 'Failed to fetch donation details.'));
@@ -131,9 +127,9 @@ export const EditDonation: React.FC = () => {
           setExpiryCalculation(res);
 
           if (res.approved_maximum_expiry && expiryTime) {
-            const approvedDate = new Date(res.approved_maximum_expiry);
+            const approvedDate = parseServerDate(res.approved_maximum_expiry);
             const currentSelected = new Date(expiryTime);
-            if (currentSelected.getTime() > approvedDate.getTime()) {
+            if (approvedDate && currentSelected.getTime() > approvedDate.getTime()) {
               setExpiryConstraintError(
                 `Selected expiry exceeds the maximum permitted safety limit (${approvedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}). You can select an earlier expiry time, but not a later one.`
               );
@@ -169,9 +165,9 @@ export const EditDonation: React.FC = () => {
     }
 
     const selectedDate = new Date(val);
-    const approvedMax = new Date(expiryCalculation.approved_maximum_expiry);
+    const approvedMax = parseServerDate(expiryCalculation.approved_maximum_expiry);
 
-    if (selectedDate.getTime() > approvedMax.getTime()) {
+    if (approvedMax && selectedDate.getTime() > approvedMax.getTime()) {
       setExpiryConstraintError(
         `Selected expiry (${selectedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}) exceeds the latest permitted expiry (${approvedMax.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}). You can select an earlier expiry time, but not a later one.`
       );
@@ -552,7 +548,7 @@ export const EditDonation: React.FC = () => {
                         <div className="bg-white/80 p-3 rounded-xl border border-[#23395B]/10">
                           <span className="text-slate-500 font-semibold block mb-0.5">Latest Permitted Expiry:</span>
                           <strong className="text-[#174D32] text-xs sm:text-sm">
-                            {new Date(expiryCalculation.approved_maximum_expiry).toLocaleString([], {
+                            {safeFormatDate(expiryCalculation.approved_maximum_expiry, {
                               dateStyle: 'short',
                               timeStyle: 'short',
                             })}
@@ -563,7 +559,7 @@ export const EditDonation: React.FC = () => {
                       <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200 text-amber-900 text-xs">
                         ⚠️ <strong>Selection Constraint:</strong> You can select an earlier expiry time, but you cannot select a time later than{' '}
                         <strong>
-                          {new Date(expiryCalculation.approved_maximum_expiry).toLocaleString([], {
+                          {safeFormatDate(expiryCalculation.approved_maximum_expiry, {
                             dateStyle: 'medium',
                             timeStyle: 'short',
                           })}

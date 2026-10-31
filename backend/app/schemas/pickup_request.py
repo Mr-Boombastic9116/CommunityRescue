@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
 from app.schemas.food_batch import FoodBatchResponse
+from app.utils.dates import format_utc_iso
 
 class PickupRequestCreate(BaseModel):
     batch_id: int
@@ -35,6 +36,17 @@ class PickupRequestResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @field_serializer(
+        "requested_at",
+        "assigned_at",
+        "collected_at",
+        "completed_at",
+        "updated_at",
+        when_used="json",
+    )
+    def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
+        return format_utc_iso(dt)
+
 class DeliveryLogResponse(BaseModel):
     log_id: int
     request_id: int
@@ -45,6 +57,10 @@ class DeliveryLogResponse(BaseModel):
     logged_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("logged_at", when_used="json")
+    def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
+        return format_utc_iso(dt)
 
 class PickupRequestDetailResponse(PickupRequestResponse):
     delivery_logs: List[DeliveryLogResponse] = []

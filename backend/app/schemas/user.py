@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional, Literal, Dict, Any
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_serializer
+from app.utils.dates import format_utc_iso
 
 class UserRegister(BaseModel):
     name: str = Field(..., min_length=2, max_length=255)
@@ -35,6 +36,10 @@ class UserProfileResponse(BaseModel):
     profile: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("created_at", when_used="json")
+    def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
+        return format_utc_iso(dt)
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
