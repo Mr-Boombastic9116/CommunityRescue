@@ -1,0 +1,26 @@
+# Python & Virtualenv
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node & Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Database & Backups
+*.sqlite3
+backups/
+
+# Logs & Editor
+*.log
+.vscode/
+.idea/
+.DS_Store
+
